@@ -793,52 +793,46 @@ namespace BakerScaleConnect
 
             try
             {
-                // Run the transaction in a background task
-                await Task.Run(() =>
+                // Create the payment request
+                var request = new Controllers.Models.PaxCreditRequest
                 {
-                    // Create the payment request
-                    var request = new Controllers.Models.PaxCreditRequest
-                    {
-                        Amount = amount.ToString("F0"),
-                        EcrReferenceNumber = $"TEST-{DateTime.Now:yyyyMMddHHmmss}",
-                        TransactionType = "Sale"
-                    };
+                    Amount = amount.ToString("F0"),
+                    EcrReferenceNumber = $"TEST-{DateTime.Now:yyyyMMddHHmmss}",
+                    TransactionType = "Sale"
+                };
 
-                    var response = _paxService.ProcessCreditPayment(request);
+                // Run the transaction with async/await
+                var response = await _paxService.ProcessCreditPaymentAsync(request);
 
-                    // Show result on UI thread
-                    this.Invoke((MethodInvoker)delegate
-                    {
-                        if (response.Success)
-                        {
-                            MessageBox.Show(
-                                $"✅ Transaction successful!\n\n" +
-                                $"Amount: ${amount:F2}\n" +
-                                $"Response Code: {response.ResponseCode}\n" +
-                                $"Response Message: {response.ResponseMessage}\n" +
-                                $"ECR Reference: {response.EcrReferenceNumber}\n" +
-                                $"Timestamp: {response.Timestamp:yyyy-MM-dd HH:mm:ss}",
-                                "PAX Transaction Result",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Information);
-                        }
-                        else
-                        {
-                            MessageBox.Show(
-                                $"❌ Transaction failed!\n\n" +
-                                $"Amount: ${amount:F2}\n" +
-                                $"Error: {response.ErrorMessage}\n" +
-                                $"ECR Reference: {response.EcrReferenceNumber}\n\n" +
-                                $"Please verify:\n" +
-                                $"• Terminal is connected and ready\n" +
-                                $"• Card is inserted/swiped properly\n" +
-                                $"• Terminal is not busy with another transaction",
-                                "PAX Transaction Result",
-                                MessageBoxButtons.OK,
-                                MessageBoxIcon.Error);
-                        }
-                    });
-                });
+                // Show result on UI thread
+                if (response.Success)
+                {
+                    MessageBox.Show(
+                        $"✅ Transaction successful!\n\n" +
+                        $"Amount: ${amount:F2}\n" +
+                        $"Response Code: {response.ResponseCode}\n" +
+                        $"Response Message: {response.ResponseMessage}\n" +
+                        $"ECR Reference: {response.EcrReferenceNumber}\n" +
+                        $"Timestamp: {response.Timestamp:yyyy-MM-dd HH:mm:ss}",
+                        "PAX Transaction Result",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        $"❌ Transaction failed!\n\n" +
+                        $"Amount: ${amount:F2}\n" +
+                        $"Error: {response.ErrorMessage}\n" +
+                        $"ECR Reference: {response.EcrReferenceNumber}\n\n" +
+                        $"Please verify:\n" +
+                        $"• Terminal is connected and ready\n" +
+                        $"• Card is inserted/swiped properly\n" +
+                        $"• Terminal is not busy with another transaction",
+                        "PAX Transaction Result",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
             }
             catch (Exception ex)
             {

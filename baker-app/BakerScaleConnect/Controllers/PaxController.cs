@@ -16,9 +16,12 @@ namespace BakerScaleConnect.Controllers
         /// Process a credit card payment transaction.
         /// </summary>
         /// <param name="request">Payment request details including amount and reference number.</param>
+        /// <param name="cancellationToken">Cancellation token to abort the transaction.</param>
         /// <returns>Payment transaction result.</returns>
         [HttpPost("credit")]
-        public ActionResult<PaxCreditResponse> ProcessCredit([FromBody] PaxCreditRequest request)
+        public async Task<ActionResult<PaxCreditResponse>> ProcessCredit(
+            [FromBody] PaxCreditRequest request, 
+            CancellationToken cancellationToken)
         {
             try
             {
@@ -48,8 +51,8 @@ namespace BakerScaleConnect.Controllers
                 amount *= 100;
                 request.Amount = amount.ToString("F0");
 
-                // Process the payment
-                var response = paxService.ProcessCreditPayment(request);
+                // Process the payment with cancellation support
+                var response = await paxService.ProcessCreditPaymentAsync(request, cancellationToken);
 
                 if (response.Success)
                 {
@@ -59,6 +62,15 @@ namespace BakerScaleConnect.Controllers
                 {
                     return StatusCode(502, response); // Bad Gateway - terminal error
                 }
+            }
+            catch (OperationCanceledException)
+            {
+                return StatusCode(499, new PaxCreditResponse
+                {
+                    Success = false,
+                    ErrorMessage = "Request cancelled by client",
+                    Timestamp = DateTime.UtcNow
+                });
             }
             catch (Exception ex)
             {

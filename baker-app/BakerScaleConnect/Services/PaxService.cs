@@ -16,6 +16,8 @@ namespace BakerScaleConnect.Services
         private readonly PaxTerminalSettings _settings;
         private string _connectionMethod = "TCP";
         private string _serialPort = "";
+        private Terminal? _activeTerminal;
+        private readonly object _terminalLock = new object();
 
         public PaxService(ILogger<PaxService> logger)
         {
@@ -33,7 +35,7 @@ namespace BakerScaleConnect.Services
         /// <summary>
         /// Process a credit card payment through the PAX terminal.
         /// </summary>
-        public PaxCreditResponse ProcessCreditPayment(PaxCreditRequest paymentRequest)
+        public async Task<PaxCreditResponse> ProcessCreditPaymentAsync(PaxCreditRequest paymentRequest, CancellationToken cancellationToken = default)
         {
             try
             {
@@ -67,63 +69,123 @@ namespace BakerScaleConnect.Services
                     terminal = poslinkSemi.GetTerminal(tcpSetting);
                 }
 
-                // Create the credit request
-                DoCreditRequest request = new();
-                
-                // Set amount information
-                POSLinkAdmin.Util.AmountRequest amountReq = new()
+                // Store active terminal for cancellation
+                lock (_terminalLock)
                 {
-                    TransactionAmount = paymentRequest.Amount,
-                };
-                request.AmountInformation = amountReq;
-
-                // Set trace information
-                POSLinkSemiIntegration.Util.TraceRequest traceReq = new()
-                {
-                    EcrReferenceNumber = paymentRequest.EcrReferenceNumber
-                };
-                request.TraceInformation = traceReq;
-
-                // Set transaction type (default to Sale if not specified)
-                request.TransactionType = paymentRequest.TransactionType switch
-                {
-                    "Return" => POSLinkAdmin.Const.TransactionType.Return,
-                    "Void" => POSLinkAdmin.Const.TransactionType.Void,
-                    _ => POSLinkAdmin.Const.TransactionType.Sale
-                };
-
-                // Execute the transaction
-                POSLinkAdmin.ExecutionResult result = terminal.Transaction.DoCredit(request, out DoCreditResponse response);
-
-                // Build response
-                if (result.GetErrorCode() == POSLinkAdmin.ExecutionResult.Code.Ok)
-                {
-                    _logger.LogInformation("Credit payment successful: Code={Code}, Message={Message}",
-                        response.ResponseCode, response.ResponseMessage);
-
-                    return new PaxCreditResponse
-                    {
-                        Success = true,
-                        ResponseCode = response.ResponseCode ?? "",
-                        ResponseMessage = response.ResponseMessage ?? "",
-                        EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
-                        Timestamp = DateTime.UtcNow
-                    };
+                    _activeTerminal = terminal;
                 }
-                else
-                {
-                    _logger.LogError("Credit payment failed: ErrorCode={ErrorCode}", result.GetErrorCode());
 
-                    return new PaxCreditResponse
+                try
+                {
+                    // Create the credit request
+                    DoCreditRequest request = new();
+
+                    // Set amount information
+                    POSLinkAdmin.Util.AmountRequest amountReq = new()
                     {
-                        Success = false,
-                        ResponseCode = "",
-                        ResponseMessage = "",
-                        EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
-                        ErrorMessage = $"Transaction failed with error code: {result.GetErrorCode()}",
-                        Timestamp = DateTime.UtcNow
+                        TransactionAmount = paymentRequest.Amount,
                     };
+                    request.AmountInformation = amountReq;
+
+                    // Set trace information
+                    POSLinkSemiIntegration.Util.TraceRequest traceReq = new()
+                    {
+                        EcrReferenceNumber = paymentRequest.EcrReferenceNumber
+                    };
+                    request.TraceInformation = traceReq;
+
+                    // Set transaction type (default to Sale if not specified)
+                    request.TransactionType = paymentRequest.TransactionType switch
+                    {
+                        "Return" => POSLinkAdmin.Const.TransactionType.Return,
+                        "Void" => POSLinkAdmin.Const.TransactionType.Void,
+                        _ => POSLinkAdmin.Const.TransactionType.Sale
+                    };
+
+                    // Execute the transaction with cancellation support
+                    // Note: DoCredit is a blocking call, so we run it in a Task and monitor for cancellation
+                    POSLinkAdmin.ExecutionResult result = null!;
+                    DoCreditResponse creditResponse = null!;
+
+                    var transactionTask = Task.Run(() =>
+                    {
+                        var execResult = terminal.Transaction.DoCredit(request, out DoCreditResponse response);
+                        return (execResult, response);
+                    }, cancellationToken);
+
+                    try
+                    {
+                        var taskResult = await transactionTask;
+                        result = taskResult.execResult;
+                        creditResponse = taskResult.response;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogWarning("Transaction cancelled by user");
+                        terminal.Cancel();
+
+                        return new PaxCreditResponse
+                        {
+                            Success = false,
+                            ResponseCode = "",
+                            ResponseMessage = "",
+                            EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
+                            ErrorMessage = "Transaction cancelled by user",
+                            Timestamp = DateTime.UtcNow
+                        };
+                    }
+
+                    // Build response
+                    if (result.GetErrorCode() == POSLinkAdmin.ExecutionResult.Code.Ok)
+                    {
+                        _logger.LogInformation("Credit payment successful: Code={Code}, Message={Message}",
+                            creditResponse.ResponseCode, creditResponse.ResponseMessage);
+
+                        return new PaxCreditResponse
+                        {
+                            Success = true,
+                            ResponseCode = creditResponse.ResponseCode ?? "",
+                            ResponseMessage = creditResponse.ResponseMessage ?? "",
+                            EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
+                            Timestamp = DateTime.UtcNow
+                        };
+                    }
+                    else
+                    {
+                        _logger.LogError("Credit payment failed: ErrorCode={ErrorCode}", result.GetErrorCode());
+
+                        return new PaxCreditResponse
+                        {
+                            Success = false,
+                            ResponseCode = "",
+                            ResponseMessage = "",
+                            EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
+                            ErrorMessage = $"Transaction failed with error code: {result.GetErrorCode()}",
+                            Timestamp = DateTime.UtcNow
+                        };
+                    }
                 }
+                finally
+                {
+                    // Clear active terminal
+                    lock (_terminalLock)
+                    {
+                        _activeTerminal = null;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Transaction cancelled before completion");
+                return new PaxCreditResponse
+                {
+                    Success = false,
+                    ResponseCode = "",
+                    ResponseMessage = "",
+                    EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
+                    ErrorMessage = "Transaction cancelled",
+                    Timestamp = DateTime.UtcNow
+                };
             }
             catch (Exception ex)
             {
@@ -175,40 +237,25 @@ namespace BakerScaleConnect.Services
         {
             try
             {
-                _logger.LogInformation("Canceling current PAX terminal operation: Method={Method}", _connectionMethod);
+                _logger.LogInformation("Attempting to cancel current PAX terminal operation");
 
-                // Get POSLink instance
-                POSLinkSemi poslinkSemi = POSLinkSemi.GetPOSLinkSemi();
-                Terminal terminal;
-
-                // Configure connection based on method
-                if (_connectionMethod == "USB")
+                Terminal? terminal;
+                lock (_terminalLock)
                 {
-                    UartSetting uartSetting = new()
-                    {
-                        BaudRate = 115200,
-                        Timeout = _settings.Timeout,
-                        SerialPortName = _serialPort,
-                    };
-                    terminal = poslinkSemi.GetTerminal(uartSetting);
-                }
-                else
-                {
-                    // Configure TCP settings
-                    TcpSetting tcpSetting = new()
-                    {
-                        Ip = _settings.Ip,
-                        Port = _settings.Port,
-                        Timeout = _settings.Timeout
-                    };
-                    terminal = poslinkSemi.GetTerminal(tcpSetting);
+                    terminal = _activeTerminal;
                 }
 
-                // Cancel the current operation
+                if (terminal == null)
+                {
+                    _logger.LogWarning("No active terminal operation to cancel");
+                    return (false, "No active operation to cancel");
+                }
+
+                // Cancel the current operation on the active terminal
                 terminal.Cancel();
 
-                _logger.LogInformation("PAX terminal operation canceled successfully");
-                return (true, "Operation canceled successfully");
+                _logger.LogInformation("PAX terminal operation cancel signal sent successfully");
+                return (true, "Cancel signal sent to terminal");
             }
             catch (Exception ex)
             {
