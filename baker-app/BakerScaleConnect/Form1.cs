@@ -661,7 +661,7 @@ namespace BakerScaleConnect
                     // Create the payment request
                     var request = new Controllers.Models.PaxCreditRequest
                     {
-                        Amount = amount.ToString("F2"),
+                        Amount = amount.ToString("F0"),
                         EcrReferenceNumber = $"TEST-{DateTime.Now:yyyyMMddHHmmss}",
                         TransactionType = "Sale"
                     };

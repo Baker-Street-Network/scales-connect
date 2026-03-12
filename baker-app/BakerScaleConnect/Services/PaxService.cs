@@ -55,7 +55,7 @@ namespace BakerScaleConnect.Services
                 // Set amount information
                 POSLinkAdmin.Util.AmountRequest amountReq = new()
                 {
-                    TransactionAmount = paymentRequest.Amount
+                    TransactionAmount = paymentRequest.Amount,
                 };
                 request.AmountInformation = amountReq;
 
