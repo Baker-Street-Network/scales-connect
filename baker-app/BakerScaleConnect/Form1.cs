@@ -411,18 +411,20 @@ namespace BakerScaleConnect
         /// </summary>
         private void LoadPaxSettings()
         {
+            System.Diagnostics.Debug.WriteLine($"LoadPaxSettings: Loading settings...");
+            System.Diagnostics.Debug.WriteLine($"  ConnectionMethod: {_settings.PaxTerminal.ConnectionMethod}");
+            System.Diagnostics.Debug.WriteLine($"  IpAddress: {_settings.PaxTerminal.IpAddress}");
+            System.Diagnostics.Debug.WriteLine($"  Port: {_settings.PaxTerminal.Port}");
+            System.Diagnostics.Debug.WriteLine($"  Timeout: {_settings.PaxTerminal.Timeout}");
+            System.Diagnostics.Debug.WriteLine($"  SerialPort: '{_settings.PaxTerminal.SerialPort}'");
+
             connectionMethodComboBox.Text = _settings.PaxTerminal.ConnectionMethod;
             terminalIp.Text = _settings.PaxTerminal.IpAddress;
             portNumber.Text = _settings.PaxTerminal.Port.ToString();
             timeoutTextBox.Text = _settings.PaxTerminal.Timeout.ToString();
 
-            // Populate serial ports
-            PopulateSerialPorts();
-
-            if (!string.IsNullOrEmpty(_settings.PaxTerminal.SerialPort))
-            {
-                serialPortComboBox.Text = _settings.PaxTerminal.SerialPort;
-            }
+            // Populate serial ports with saved selection
+            PopulateSerialPorts(_settings.PaxTerminal.SerialPort);
 
             // Show appropriate tab based on connection method
             UpdateTabVisibility();
@@ -434,11 +436,15 @@ namespace BakerScaleConnect
         /// <summary>
         /// Populate the serial port combo box with available ports.
         /// </summary>
-        private void PopulateSerialPorts()
+        private void PopulateSerialPorts(string? savedSelection = null)
         {
             try
             {
-                string currentSelection = serialPortComboBox.Text;
+                // Use saved selection if provided, otherwise use current selection
+                string currentSelection = savedSelection ?? serialPortComboBox.Text;
+
+                System.Diagnostics.Debug.WriteLine($"PopulateSerialPorts: savedSelection={savedSelection}, currentSelection={currentSelection}");
+
                 serialPortComboBox.Items.Clear();
 
                 string[] ports = SerialPort.GetPortNames();
@@ -453,10 +459,12 @@ namespace BakerScaleConnect
                     if (!string.IsNullOrEmpty(currentSelection) && serialPortComboBox.Items.Contains(currentSelection))
                     {
                         serialPortComboBox.Text = currentSelection;
+                        System.Diagnostics.Debug.WriteLine($"PopulateSerialPorts: Restored selection to {currentSelection}");
                     }
                     else if (serialPortComboBox.Items.Count > 0)
                     {
                         serialPortComboBox.SelectedIndex = 0;
+                        System.Diagnostics.Debug.WriteLine($"PopulateSerialPorts: Set to default index 0: {serialPortComboBox.Text}");
                     }
                 }
                 else
@@ -539,6 +547,7 @@ namespace BakerScaleConnect
                     _settings.PaxTerminal.Timeout = timeout;
                 }
 
+                System.Diagnostics.Debug.WriteLine($"SavePaxSettings: Saving SerialPort='{serialPortComboBox.Text}'");
                 _settings.Save();
                 UpdatePaxService();
             }
