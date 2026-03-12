@@ -200,11 +200,90 @@ curl -X POST http://localhost:5000/api/pax/credit \
 curl -X POST http://localhost:5000/api/pax/cancel
 ```
 
+## Batch Closing Operations
+
+### Process Batch Close
+**POST** `/api/closing/batch`
+
+Closes the current batch and settles all transactions on the PAX terminal. This is typically done at the end of the business day.
+
+**Request Body:**
+```json
+{
+  "ecrReferenceNumber": "BATCH-2024-001"
+}
+```
+
+**Fields:**
+- `ecrReferenceNumber` (required): Unique reference number for tracking the batch close operation
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "responseCode": "000000",
+  "responseMessage": "BATCH CLOSE APPROVED",
+  "ecrReferenceNumber": "BATCH-2024-001",
+  "batchNumber": "123",
+  "hostResponse": "APPROVED",
+  "timestamp": "2024-01-15T22:00:00Z"
+}
+```
+
+**Response (502 Bad Gateway - Terminal Error):**
+```json
+{
+  "success": false,
+  "responseCode": "",
+  "responseMessage": "",
+  "ecrReferenceNumber": "BATCH-2024-001",
+  "errorMessage": "Batch close failed with error code: ...",
+  "timestamp": "2024-01-15T22:00:00Z"
+}
+```
+
+### Batch Close Health Check
+**GET** `/api/closing/health`
+
+Health check endpoint for the closing service.
+
+**Response (200 OK):**
+```json
+{
+  "status": "healthy",
+  "service": "closing",
+  "timestamp": "2024-01-15T22:00:00Z"
+}
+```
+
+### Example Usage
+
+**Process End-of-Day Batch Close:**
+```bash
+curl -X POST http://localhost:5000/api/closing/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ecrReferenceNumber": "EOD-2024-01-15"
+  }'
+```
+
+**Typical Daily Workflow:**
+```bash
+# Run all day's transactions...
+# At end of day, close the batch
+curl -X POST http://localhost:5000/api/closing/batch \
+  -H "Content-Type: application/json" \
+  -d '{
+    "ecrReferenceNumber": "EOD-'$(date +%Y-%m-%d)'"
+  }'
+```
+
 ## Error Handling
 
 The API returns appropriate HTTP status codes:
 - **200 OK**: Transaction successful
 - **400 Bad Request**: Invalid request (missing or invalid parameters)
+- **499 Client Closed Request**: Request cancelled by client
 - **500 Internal Server Error**: Server-side error
 - **502 Bad Gateway**: PAX terminal communication error
 

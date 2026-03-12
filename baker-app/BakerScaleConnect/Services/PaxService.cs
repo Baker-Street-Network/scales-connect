@@ -2,6 +2,7 @@ using BakerScaleConnect.Controllers.Models;
 using Microsoft.Extensions.Logging;
 using POSLinkCore.CommunicationSetting;
 using POSLinkSemiIntegration;
+using POSLinkSemiIntegration.Batch;
 using POSLinkSemiIntegration.Transaction;
 using POSLinkUart;
 
@@ -261,6 +262,133 @@ namespace BakerScaleConnect.Services
             {
                 _logger.LogError(ex, "Error canceling PAX terminal operation");
                 return (false, $"Failed to cancel operation: {ex.Message}");
+            }
+        }
+
+        public async Task<PaxBatchCloseResponse> ProcessBatchCloseAsync(PaxBatchCloseRequest batchRequest, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation("Processing batch close: EcrRef={EcrRef}, Method={Method}",
+                    batchRequest.EcrReferenceNumber, _connectionMethod);
+
+                // Get POSLink instance
+                POSLinkSemi poslinkSemi = POSLinkSemi.GetPOSLinkSemi();
+                Terminal terminal;
+
+                // Configure connection based on method
+                if (_connectionMethod == "USB")
+                {
+                    UartSetting uartSetting = new()
+                    {
+                        BaudRate = 115200,
+                        Timeout = _settings.Timeout,
+                        SerialPortName = _serialPort,
+                    };
+                    terminal = poslinkSemi.GetTerminal(uartSetting);
+                }
+                else
+                {
+                    // Configure TCP settings
+                    TcpSetting tcpSetting = new()
+                    {
+                        Ip = _settings.Ip,
+                        Port = _settings.Port,
+                        Timeout = _settings.Timeout
+                    };
+                    terminal = poslinkSemi.GetTerminal(tcpSetting);
+                }
+
+                // Store active terminal for cancellation
+                lock (_terminalLock)
+                {
+                    _activeTerminal = terminal;
+                }
+
+                try
+                {
+                    // Create the batch close request
+                    var request = new BatchCloseRequest();
+
+                    var result = terminal.Batch.BatchClose(request, out BatchCloseResponse response);
+
+                    // Build response
+                    if (result.GetErrorCode() == POSLinkAdmin.ExecutionResult.Code.Ok)
+                    {
+                        _logger.LogInformation("Batch close successful: Code={Code}, Message={Message}",
+                            response.ResponseCode, response.ResponseMessage);
+
+                        return new PaxBatchCloseResponse
+                        {
+                            Success = true,
+                            ResponseCode = response.ResponseCode ?? "",
+                            ResponseMessage = response.ResponseMessage ?? "",
+                            EcrReferenceNumber = batchRequest.EcrReferenceNumber,
+                            Timestamp = DateTime.UtcNow
+                        };
+                    }
+                    else
+                    {
+                        _logger.LogError("Batch close failed: ErrorCode={ErrorCode}", result.GetErrorCode());
+
+                        return new PaxBatchCloseResponse
+                        {
+                            Success = false,
+                            ResponseCode = "",
+                            ResponseMessage = "",
+                            EcrReferenceNumber = batchRequest.EcrReferenceNumber,
+                            ErrorMessage = $"Batch close failed with error code: {result.GetErrorCode()}",
+                            Timestamp = DateTime.UtcNow
+                        };
+                    }
+                }
+                finally
+                {
+                    // Clear active terminal
+                    lock (_terminalLock)
+                    {
+                        _activeTerminal = null;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Batch close cancelled before completion");
+                return new PaxBatchCloseResponse
+                {
+                    Success = false,
+                    ResponseCode = "",
+                    ResponseMessage = "",
+                    EcrReferenceNumber = batchRequest.EcrReferenceNumber,
+                    ErrorMessage = "Batch close cancelled",
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+            catch (NotSupportedException ex)
+            {
+                _logger.LogError(ex, "Batch close not supported by SDK");
+                return new PaxBatchCloseResponse
+                {
+                    Success = false,
+                    ResponseCode = "",
+                    ResponseMessage = "",
+                    EcrReferenceNumber = batchRequest.EcrReferenceNumber,
+                    ErrorMessage = ex.Message,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error processing batch close");
+                return new PaxBatchCloseResponse
+                {
+                    Success = false,
+                    ResponseCode = "",
+                    ResponseMessage = "",
+                    EcrReferenceNumber = batchRequest.EcrReferenceNumber,
+                    ErrorMessage = ex.Message,
+                    Timestamp = DateTime.UtcNow
+                };
             }
         }
     }
