@@ -1,0 +1,129 @@
+using Microsoft.AspNetCore.Mvc;
+using BakerScaleConnect.Controllers.Models;
+using BakerScaleConnect.Services;
+
+namespace BakerScaleConnect.Controllers
+{
+    /// <summary>
+    /// API controller for PAX credit card terminal operations.
+    /// </summary>
+    [ApiController]
+    [Route("api/[controller]")]
+    public class PaxController(PaxService paxService) : ControllerBase
+    {
+        /// <summary>
+        /// Process a credit card payment transaction.
+        /// </summary>
+        /// <param name="request">Payment request details including amount and reference number.</param>
+        /// <returns>Payment transaction result.</returns>
+        [HttpPost("credit")]
+        public ActionResult<PaxCreditResponse> ProcessCredit([FromBody] PaxCreditRequest request)
+        {
+            try
+            {
+                // Validate request
+                if (string.IsNullOrWhiteSpace(request.Amount))
+                {
+                    return BadRequest(new PaxCreditResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "Amount is required",
+                        Timestamp = DateTime.UtcNow
+                    });
+                }
+
+                if (string.IsNullOrWhiteSpace(request.EcrReferenceNumber))
+                {
+                    return BadRequest(new PaxCreditResponse
+                    {
+                        Success = false,
+                        ErrorMessage = "ECR Reference Number is required",
+                        Timestamp = DateTime.UtcNow
+                    });
+                }
+
+                // Process the payment
+                var response = paxService.ProcessCreditPayment(request);
+
+                if (response.Success)
+                {
+                    return Ok(response);
+                }
+                else
+                {
+                    return StatusCode(502, response); // Bad Gateway - terminal error
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new PaxCreditResponse
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message,
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+        }
+
+        /// <summary>
+        /// Get current PAX terminal settings.
+        /// </summary>
+        /// <returns>Terminal connection settings.</returns>
+        [HttpGet("settings")]
+        public ActionResult<PaxTerminalSettings> GetSettings()
+        {
+            try
+            {
+                var settings = paxService.GetSettings();
+                return Ok(settings);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Update PAX terminal connection settings.
+        /// </summary>
+        /// <param name="settings">New terminal settings.</param>
+        /// <returns>Confirmation of updated settings.</returns>
+        [HttpPost("settings")]
+        public ActionResult<PaxTerminalSettings> UpdateSettings([FromBody] PaxTerminalSettings settings)
+        {
+            try
+            {
+                // Validate settings
+                if (string.IsNullOrWhiteSpace(settings.Ip))
+                {
+                    return BadRequest(new { error = "IP address is required" });
+                }
+
+                if (settings.Port <= 0 || settings.Port > 65535)
+                {
+                    return BadRequest(new { error = "Port must be between 1 and 65535" });
+                }
+
+                if (settings.Timeout < 1000)
+                {
+                    return BadRequest(new { error = "Timeout must be at least 1000 milliseconds" });
+                }
+
+                paxService.UpdateSettings(settings.Ip, settings.Port, settings.Timeout);
+                return Ok(settings);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Health check endpoint for PAX terminal availability.
+        /// </summary>
+        /// <returns>Health status.</returns>
+        [HttpGet("health")]
+        public ActionResult GetHealth() =>
+            Ok(new { status = "healthy", service = "pax", timestamp = DateTime.UtcNow });
+    }
+}

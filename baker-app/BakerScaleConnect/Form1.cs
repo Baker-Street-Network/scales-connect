@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using BakerScaleConnect.Services;
 
 namespace BakerScaleConnect
 {
@@ -9,18 +10,26 @@ namespace BakerScaleConnect
         private ContextMenuStrip? _contextMenu;
         private readonly IHost _host;
         private readonly ScannerManager _scannerManager;
+        private readonly PaxService _paxService;
         private System.Windows.Forms.Timer? _retryTimer;
         private int _retryCount;
         private const int RETRY_INTERVAL_MS = 5000; // 5 seconds between retries
+        private AppSettings _settings;
 
         public Form1(IHost host)
         {
             InitializeComponent();
             _host = host;
             _scannerManager = host.Services.GetRequiredService<ScannerManager>();
+            _paxService = host.Services.GetRequiredService<PaxService>();
+
+            // Load settings
+            _settings = AppSettings.Load();
+
             SetupSystemTray();
             SetupForm();
             WireButtonEvents();
+            LoadPaxSettings();
 
             // Discover scanners immediately on startup
             this.Load += Form1_Load;
@@ -31,6 +40,13 @@ namespace BakerScaleConnect
             button1.Click += BtnSetSnapi_Click;
             button2.Click += BtnSetEmulation_Click;
             comboVolume.SelectedIndexChanged += ComboVolume_SelectedIndexChanged;
+
+            // PAX terminal events
+            btnTestTransaction.Click += BtnTestConnection_Click;
+            btnTestTransaction.Click += BtnTestTransaction_Click;
+            terminalIp.TextChanged += PaxSettings_Changed;
+            portNumber.TextChanged += PaxSettings_Changed;
+            timeoutTextBox.TextChanged += PaxSettings_Changed;
         }
 
         private void Form1_Load(object? sender, EventArgs e)
@@ -297,7 +313,7 @@ namespace BakerScaleConnect
             // Minimize to tray instead of taskbar
             this.WindowState = FormWindowState.Normal;
             this.ShowInTaskbar = true;
-            
+
             // Handle form closing to minimize to tray instead
             this.FormClosing += Form1_FormClosing;
             this.Resize += Form1_Resize;
@@ -332,7 +348,7 @@ namespace BakerScaleConnect
             {
                 this.Hide();
                 this.ShowInTaskbar = false;
-                _notifyIcon!.ShowBalloonTip(2000, "Baker Scale Connect", 
+                _notifyIcon!.ShowBalloonTip(2000, "Baker Scale Connect",
                     "Application minimized to system tray", ToolTipIcon.Info);
             }
         }
@@ -377,13 +393,346 @@ namespace BakerScaleConnect
         {
             // Stop the background service gracefully
             await _host.StopAsync();
-            
+
             // Clean up the notify icon
             _notifyIcon?.Dispose();
-            
+
             // Exit the application
             Application.Exit();
         }
+
+        #region PAX Terminal Methods
+
+        /// <summary>
+        /// Load PAX terminal settings from file and populate the UI.
+        /// </summary>
+        private void LoadPaxSettings()
+        {
+            terminalIp.Text = _settings.PaxTerminal.IpAddress;
+            portNumber.Text = _settings.PaxTerminal.Port.ToString();
+            timeoutTextBox.Text = _settings.PaxTerminal.Timeout.ToString();
+
+            // Update the PaxService with loaded settings
+            UpdatePaxService();
+        }
+
+        /// <summary>
+        /// Called when any PAX setting textbox changes.
+        /// </summary>
+        private void PaxSettings_Changed(object? sender, EventArgs e)
+        {
+            SavePaxSettings();
+        }
+
+        /// <summary>
+        /// Save PAX settings to file and update the service.
+        /// </summary>
+        private void SavePaxSettings()
+        {
+            try
+            {
+                _settings.PaxTerminal.IpAddress = terminalIp.Text;
+
+                if (int.TryParse(portNumber.Text, out int port))
+                {
+                    _settings.PaxTerminal.Port = port;
+                }
+
+                if (int.TryParse(timeoutTextBox.Text, out int timeout))
+                {
+                    _settings.PaxTerminal.Timeout = timeout;
+                }
+
+                _settings.Save();
+                UpdatePaxService();
+            }
+            catch (Exception ex)
+            {
+                // Log but don't show error for auto-save
+                System.Diagnostics.Debug.WriteLine($"Error saving PAX settings: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Update the PaxService with current settings.
+        /// </summary>
+        private void UpdatePaxService()
+        {
+            _paxService.UpdateSettings(
+                _settings.PaxTerminal.IpAddress,
+                _settings.PaxTerminal.Port,
+                _settings.PaxTerminal.Timeout
+            );
+        }
+
+        /// <summary>
+        /// Test connection to the PAX terminal.
+        /// </summary>
+        private async void BtnTestConnection_Click(object? sender, EventArgs e)
+        {
+            // Validate inputs
+            if (string.IsNullOrWhiteSpace(terminalIp.Text))
+            {
+                MessageBox.Show("Please enter a terminal IP address.",
+                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!int.TryParse(portNumber.Text, out int port) || port <= 0 || port > 65535)
+            {
+                MessageBox.Show("Please enter a valid port number (1-65535).",
+                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!int.TryParse(timeoutTextBox.Text, out int timeout) || timeout < 1000)
+            {
+                MessageBox.Show("Please enter a valid timeout (minimum 1000ms).",
+                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Save settings before testing
+            SavePaxSettings();
+
+            // Disable button and show testing state
+            btnTestTransaction.Enabled = false;
+            btnTestTransaction.Text = "Testing...";
+            this.Cursor = Cursors.WaitCursor;
+
+            try
+            {
+                // Run the test connection in a background task to avoid blocking UI
+                bool success = false;
+                string message = "";
+
+                await Task.Run(() =>
+                {
+                    try
+                    {
+                        using (var client = new System.Net.Sockets.TcpClient())
+                        {
+                            // Use a shorter timeout for the connection test (5 seconds)
+                            var connectTask = client.ConnectAsync(terminalIp.Text, port);
+                            if (connectTask.Wait(5000))
+                            {
+                                if (client.Connected)
+                                {
+                                    success = true;
+                                    message = "Successfully connected to PAX terminal!";
+                                }
+                                else
+                                {
+                                    success = false;
+                                    message = "Could not establish connection to terminal.";
+                                }
+                            }
+                            else
+                            {
+                                success = false;
+                                message = "Connection timeout. Terminal did not respond within 5 seconds.";
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        success = false;
+                        message = ex.Message;
+                    }
+                });
+
+                // Show result on UI thread
+                if (success)
+                {
+                    MessageBox.Show(
+                        $"✅ Connection successful!\n\n" +
+                        $"Terminal: {terminalIp.Text}:{port}\n" +
+                        $"Status: Connected",
+                        "PAX Terminal Connection Test",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Information);
+                }
+                else
+                {
+                    MessageBox.Show(
+                        $"❌ Connection failed.\n\n" +
+                        $"Error: {message}\n\n" +
+                        $"Please verify:\n" +
+                        $"• Terminal IP address is correct ({terminalIp.Text})\n" +
+                        $"• Terminal is powered on and connected to network\n" +
+                        $"• Port {port} is accessible\n" +
+                        $"• No firewall is blocking the connection",
+                        "PAX Terminal Connection Test",
+                        MessageBoxButtons.OK,
+                        MessageBoxIcon.Error);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"An error occurred while testing the connection:\n\n{ex.Message}",
+                    "Baker Scale Connect",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                // Re-enable button
+                btnTestTransaction.Enabled = true;
+                btnTestTransaction.Text = "Test Connection";
+                this.Cursor = Cursors.Default;
+            }
+        }
+
+        /// <summary>
+        /// Run a test transaction with the specified amount.
+        /// </summary>
+        private async void BtnTestTransaction_Click(object? sender, EventArgs e)
+        {
+            // Validate inputs
+            if (string.IsNullOrWhiteSpace(terminalIp.Text))
+            {
+                MessageBox.Show("Please enter a terminal IP address.",
+                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!int.TryParse(portNumber.Text, out int port) || port <= 0 || port > 65535)
+            {
+                MessageBox.Show("Please enter a valid port number (1-65535).",
+                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!int.TryParse(timeoutTextBox.Text, out int timeout) || timeout < 1000)
+            {
+                MessageBox.Show("Please enter a valid timeout (minimum 1000ms).",
+                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Validate amount
+            if (string.IsNullOrWhiteSpace(testAmountTextbox.Text))
+            {
+                MessageBox.Show("Please enter a transaction amount.",
+                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            if (!decimal.TryParse(testAmountTextbox.Text, out decimal amount) || amount <= 0)
+            {
+                MessageBox.Show("Please enter a valid amount greater than 0.",
+                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return;
+            }
+
+            // Confirm the transaction
+            var confirmResult = MessageBox.Show(
+                $"Are you sure you want to run a test transaction for ${amount:F2}?\n\n" +
+                $"Terminal: {terminalIp.Text}:{port}\n\n" +
+                $"This will process a REAL transaction on the connected terminal.",
+                "Confirm Test Transaction",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question);
+
+            if (confirmResult != DialogResult.Yes)
+            {
+                return;
+            }
+
+            // Save settings before processing
+            SavePaxSettings();
+
+            // Disable controls and show processing state
+            btnTestTransaction.Enabled = false;
+            btnTestTransaction.Text = "Processing...";
+            btnTestTransaction.Enabled = false;
+            terminalIp.Enabled = false;
+            portNumber.Enabled = false;
+            timeoutTextBox.Enabled = false;
+            testAmountTextbox.Enabled = false;
+            this.Cursor = Cursors.WaitCursor;
+
+            try
+            {
+                // Run the transaction in a background task
+                await Task.Run(() =>
+                {
+                    // Create the payment request
+                    var request = new Controllers.Models.PaxCreditRequest
+                    {
+                        Amount = amount.ToString("F2"),
+                        EcrReferenceNumber = $"TEST-{DateTime.Now:yyyyMMddHHmmss}",
+                        TransactionType = "Sale"
+                    };
+
+                    var response = _paxService.ProcessCreditPayment(request);
+
+                    // Show result on UI thread
+                    this.Invoke((MethodInvoker)delegate
+                    {
+                        if (response.Success)
+                        {
+                            MessageBox.Show(
+                                $"✅ Transaction successful!\n\n" +
+                                $"Amount: ${amount:F2}\n" +
+                                $"Response Code: {response.ResponseCode}\n" +
+                                $"Response Message: {response.ResponseMessage}\n" +
+                                $"ECR Reference: {response.EcrReferenceNumber}\n" +
+                                $"Timestamp: {response.Timestamp:yyyy-MM-dd HH:mm:ss}",
+                                "PAX Transaction Result",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Information);
+                        }
+                        else
+                        {
+                            MessageBox.Show(
+                                $"❌ Transaction failed!\n\n" +
+                                $"Amount: ${amount:F2}\n" +
+                                $"Error: {response.ErrorMessage}\n" +
+                                $"ECR Reference: {response.EcrReferenceNumber}\n\n" +
+                                $"Please verify:\n" +
+                                $"• Terminal is connected and ready\n" +
+                                $"• Card is inserted/swiped properly\n" +
+                                $"• Terminal is not busy with another transaction",
+                                "PAX Transaction Result",
+                                MessageBoxButtons.OK,
+                                MessageBoxIcon.Error);
+                        }
+                    });
+                });
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(
+                    $"An error occurred during the transaction:\n\n{ex.Message}",
+                    "Baker Scale Connect",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Error);
+            }
+            finally
+            {
+                // Re-enable controls
+                btnTestTransaction.Enabled = true;
+                btnTestTransaction.Text = "Run Transaction";
+                btnTestTransaction.Enabled = true;
+                terminalIp.Enabled = true;
+                portNumber.Enabled = true;
+                timeoutTextBox.Enabled = true;
+                testAmountTextbox.Enabled = true;
+                this.Cursor = Cursors.Default;
+            }
+        }
+
+        /// <summary>
+        /// Empty event handler for label10 click (auto-generated by designer).
+        /// </summary>
+        private void label10_Click(object? sender, EventArgs e)
+        {
+            // No action needed
+        }
+
+        #endregion
 
         protected override void Dispose(bool disposing)
         {
@@ -396,6 +745,16 @@ namespace BakerScaleConnect
                 components?.Dispose();
             }
             base.Dispose(disposing);
+        }
+
+        private void textBox1_TextChanged(object sender, EventArgs e)
+        {
+
+        }
+
+        private void button3_Click(object sender, EventArgs e)
+        {
+
         }
     }
 }

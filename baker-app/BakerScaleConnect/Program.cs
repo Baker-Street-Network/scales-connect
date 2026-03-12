@@ -36,7 +36,10 @@ namespace BakerScaleConnect
                     
                     // Register connectivity service
                     services.AddScoped<ConnectivityService>();
-                    
+
+                    // Register PAX service
+                    services.AddSingleton<PaxService>();
+
                     // Add logging
                     services.AddLogging(builder =>
                     {

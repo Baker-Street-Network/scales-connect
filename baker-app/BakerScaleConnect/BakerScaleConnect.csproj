@@ -27,6 +27,15 @@
       <HintPath>lib\Interop.CoreScanner.dll</HintPath>
       <EmbedInteropTypes>False</EmbedInteropTypes>
     </Reference>
+    <Reference Include="POSLinkAdmin">
+      <HintPath>PaxLibs\POSLinkAdmin.dll</HintPath>
+    </Reference>
+    <Reference Include="POSLinkCore">
+      <HintPath>PaxLibs\POSLinkCore.dll</HintPath>
+    </Reference>
+    <Reference Include="POSLinkSemiIntegration">
+      <HintPath>PaxLibs\POSLinkSemiIntegration.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
 </Project>
