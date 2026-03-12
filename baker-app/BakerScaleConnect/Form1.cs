@@ -42,7 +42,7 @@ namespace BakerScaleConnect
             comboVolume.SelectedIndexChanged += ComboVolume_SelectedIndexChanged;
 
             // PAX terminal events
-            btnTestTransaction.Click += BtnTestConnection_Click;
+            button4.Click += BtnTestConnection_Click;
             btnTestTransaction.Click += BtnTestTransaction_Click;
             terminalIp.TextChanged += PaxSettings_Changed;
             portNumber.TextChanged += PaxSettings_Changed;
@@ -496,8 +496,8 @@ namespace BakerScaleConnect
             SavePaxSettings();
 
             // Disable button and show testing state
-            btnTestTransaction.Enabled = false;
-            btnTestTransaction.Text = "Testing...";
+            button4.Enabled = false;
+            button4.Text = "Testing...";
             this.Cursor = Cursors.WaitCursor;
 
             try
@@ -578,8 +578,8 @@ namespace BakerScaleConnect
             finally
             {
                 // Re-enable button
-                btnTestTransaction.Enabled = true;
-                btnTestTransaction.Text = "Test Connection";
+                button4.Enabled = true;
+                button4.Text = "Test Connection";
                 this.Cursor = Cursors.Default;
             }
         }
@@ -646,7 +646,7 @@ namespace BakerScaleConnect
             // Disable controls and show processing state
             btnTestTransaction.Enabled = false;
             btnTestTransaction.Text = "Processing...";
-            btnTestTransaction.Enabled = false;
+            button4.Enabled = false;
             terminalIp.Enabled = false;
             portNumber.Enabled = false;
             timeoutTextBox.Enabled = false;
