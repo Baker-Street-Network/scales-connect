@@ -166,5 +166,55 @@ namespace BakerScaleConnect.Services
                 Timeout = _settings.Timeout
             }, _serialPort);
         }
+
+        /// <summary>
+        /// Cancel the current operation on the PAX terminal.
+        /// This cancels any in-progress transaction, prompts, or other operations.
+        /// </summary>
+        public (bool Success, string Message) CancelCurrentOperation()
+        {
+            try
+            {
+                _logger.LogInformation("Canceling current PAX terminal operation: Method={Method}", _connectionMethod);
+
+                // Get POSLink instance
+                POSLinkSemi poslinkSemi = POSLinkSemi.GetPOSLinkSemi();
+                Terminal terminal;
+
+                // Configure connection based on method
+                if (_connectionMethod == "USB")
+                {
+                    UartSetting uartSetting = new()
+                    {
+                        BaudRate = 115200,
+                        Timeout = _settings.Timeout,
+                        SerialPortName = _serialPort,
+                    };
+                    terminal = poslinkSemi.GetTerminal(uartSetting);
+                }
+                else
+                {
+                    // Configure TCP settings
+                    TcpSetting tcpSetting = new()
+                    {
+                        Ip = _settings.Ip,
+                        Port = _settings.Port,
+                        Timeout = _settings.Timeout
+                    };
+                    terminal = poslinkSemi.GetTerminal(tcpSetting);
+                }
+
+                // Cancel the current operation
+                terminal.Cancel();
+
+                _logger.LogInformation("PAX terminal operation canceled successfully");
+                return (true, "Operation canceled successfully");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error canceling PAX terminal operation");
+                return (false, $"Failed to cancel operation: {ex.Message}");
+            }
+        }
     }
 }

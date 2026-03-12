@@ -97,6 +97,37 @@ Simple health check endpoint.
 }
 ```
 
+### Cancel Current Operation
+**POST** `/api/pax/cancel`
+
+Cancels the current operation on the PAX terminal. This will cancel any in-progress transaction, prompt, or other operation currently being performed on the terminal.
+
+**Use Cases:**
+- Cancel a transaction that's waiting for card input
+- Cancel a transaction that's processing
+- Cancel any terminal prompt or operation
+- Emergency stop for stuck operations
+
+**Request:** No request body required
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "message": "Operation canceled successfully",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+**Response (502 Bad Gateway - Terminal Error):**
+```json
+{
+  "success": false,
+  "error": "Failed to cancel operation: Connection timeout",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
 ## Configuration
 
 Default terminal settings:
@@ -146,6 +177,27 @@ curl -X POST http://localhost:5000/api/pax/settings \
     "port": 10009,
     "timeout": 60000
   }'
+```
+
+### Cancel Current Operation:
+```bash
+curl -X POST http://localhost:5000/api/pax/cancel
+```
+
+**Use case example:**
+If a transaction is stuck waiting for card input or the customer wants to abort:
+```bash
+# Start a transaction
+curl -X POST http://localhost:5000/api/pax/credit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": "25.99",
+    "ecrReferenceNumber": "ORDER-2024-001",
+    "transactionType": "Sale"
+  }' &
+
+# Cancel it if needed
+curl -X POST http://localhost:5000/api/pax/cancel
 ```
 
 ## Error Handling

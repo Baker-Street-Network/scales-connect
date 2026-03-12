@@ -130,6 +130,48 @@ namespace BakerScaleConnect.Controllers
         }
 
         /// <summary>
+        /// Cancel the current operation on the PAX terminal.
+        /// This will cancel any in-progress transaction, prompt, or other operation.
+        /// </summary>
+        /// <returns>Result of the cancel operation.</returns>
+        [HttpPost("cancel")]
+        public ActionResult CancelOperation()
+        {
+            try
+            {
+                var (success, message) = paxService.CancelCurrentOperation();
+
+                if (success)
+                {
+                    return Ok(new
+                    {
+                        success = true,
+                        message = message,
+                        timestamp = DateTime.UtcNow
+                    });
+                }
+                else
+                {
+                    return StatusCode(502, new
+                    {
+                        success = false,
+                        error = message,
+                        timestamp = DateTime.UtcNow
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    error = ex.Message,
+                    timestamp = DateTime.UtcNow
+                });
+            }
+        }
+
+        /// <summary>
         /// Health check endpoint for PAX terminal availability.
         /// </summary>
         /// <returns>Health status.</returns>
