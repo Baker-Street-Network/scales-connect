@@ -1,6 +1,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using BakerScaleConnect.Services;
+using System.IO.Ports;
 
 namespace BakerScaleConnect
 {
@@ -44,9 +45,11 @@ namespace BakerScaleConnect
             // PAX terminal events
             button4.Click += BtnTestConnection_Click;
             btnTestTransaction.Click += BtnTestTransaction_Click;
+            connectionMethodComboBox.SelectedIndexChanged += ConnectionMethod_Changed;
             terminalIp.TextChanged += PaxSettings_Changed;
             portNumber.TextChanged += PaxSettings_Changed;
             timeoutTextBox.TextChanged += PaxSettings_Changed;
+            serialPortComboBox.SelectedIndexChanged += PaxSettings_Changed;
         }
 
         private void Form1_Load(object? sender, EventArgs e)
@@ -408,12 +411,103 @@ namespace BakerScaleConnect
         /// </summary>
         private void LoadPaxSettings()
         {
+            connectionMethodComboBox.Text = _settings.PaxTerminal.ConnectionMethod;
             terminalIp.Text = _settings.PaxTerminal.IpAddress;
             portNumber.Text = _settings.PaxTerminal.Port.ToString();
             timeoutTextBox.Text = _settings.PaxTerminal.Timeout.ToString();
 
+            // Populate serial ports
+            PopulateSerialPorts();
+
+            if (!string.IsNullOrEmpty(_settings.PaxTerminal.SerialPort))
+            {
+                serialPortComboBox.Text = _settings.PaxTerminal.SerialPort;
+            }
+
+            // Show appropriate tab based on connection method
+            UpdateTabVisibility();
+
             // Update the PaxService with loaded settings
             UpdatePaxService();
+        }
+
+        /// <summary>
+        /// Populate the serial port combo box with available ports.
+        /// </summary>
+        private void PopulateSerialPorts()
+        {
+            try
+            {
+                string currentSelection = serialPortComboBox.Text;
+                serialPortComboBox.Items.Clear();
+
+                string[] ports = SerialPort.GetPortNames();
+                if (ports.Length > 0)
+                {
+                    foreach (string port in ports)
+                    {
+                        serialPortComboBox.Items.Add(port);
+                    }
+
+                    // Restore previous selection if it still exists
+                    if (!string.IsNullOrEmpty(currentSelection) && serialPortComboBox.Items.Contains(currentSelection))
+                    {
+                        serialPortComboBox.Text = currentSelection;
+                    }
+                    else if (serialPortComboBox.Items.Count > 0)
+                    {
+                        serialPortComboBox.SelectedIndex = 0;
+                    }
+                }
+                else
+                {
+                    serialPortComboBox.Items.Add("No ports found");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error populating serial ports: {ex.Message}");
+                serialPortComboBox.Items.Clear();
+                serialPortComboBox.Items.Add("Error loading ports");
+            }
+        }
+
+        /// <summary>
+        /// Called when connection method changes (TCP vs USB).
+        /// </summary>
+        private void ConnectionMethod_Changed(object? sender, EventArgs e)
+        {
+            UpdateTabVisibility();
+            SavePaxSettings();
+
+            // Refresh serial ports when switching to USB
+            if (connectionMethodComboBox.Text == "USB")
+            {
+                PopulateSerialPorts();
+            }
+        }
+
+        /// <summary>
+        /// Update tab visibility based on selected connection method.
+        /// </summary>
+        private void UpdateTabVisibility()
+        {
+            if (connectionMethodComboBox.Text == "TCP")
+            {
+                if (!tabControl1.TabPages.Contains(tabPage1))
+                    tabControl1.TabPages.Add(tabPage1);
+                if (tabControl1.TabPages.Contains(tabPage2))
+                    tabControl1.TabPages.Remove(tabPage2);
+                tabControl1.SelectedTab = tabPage1;
+            }
+            else if (connectionMethodComboBox.Text == "USB")
+            {
+                if (tabControl1.TabPages.Contains(tabPage1))
+                    tabControl1.TabPages.Remove(tabPage1);
+                if (!tabControl1.TabPages.Contains(tabPage2))
+                    tabControl1.TabPages.Add(tabPage2);
+                tabControl1.SelectedTab = tabPage2;
+            }
         }
 
         /// <summary>
@@ -431,7 +525,9 @@ namespace BakerScaleConnect
         {
             try
             {
+                _settings.PaxTerminal.ConnectionMethod = connectionMethodComboBox.Text;
                 _settings.PaxTerminal.IpAddress = terminalIp.Text;
+                _settings.PaxTerminal.SerialPort = serialPortComboBox.Text;
 
                 if (int.TryParse(portNumber.Text, out int port))
                 {
@@ -459,9 +555,11 @@ namespace BakerScaleConnect
         private void UpdatePaxService()
         {
             _paxService.UpdateSettings(
+                _settings.PaxTerminal.ConnectionMethod,
                 _settings.PaxTerminal.IpAddress,
                 _settings.PaxTerminal.Port,
-                _settings.PaxTerminal.Timeout
+                _settings.PaxTerminal.Timeout,
+                _settings.PaxTerminal.SerialPort
             );
         }
 
@@ -470,17 +568,28 @@ namespace BakerScaleConnect
         /// </summary>
         private async void BtnTestConnection_Click(object? sender, EventArgs e)
         {
-            // Validate inputs
-            if (string.IsNullOrWhiteSpace(terminalIp.Text))
-            {
-                MessageBox.Show("Please enter a terminal IP address.",
-                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            string connectionMethod = connectionMethodComboBox.Text;
 
-            if (!int.TryParse(portNumber.Text, out int port) || port <= 0 || port > 65535)
+            // Validate based on connection method
+            if (connectionMethod == "TCP")
             {
-                MessageBox.Show("Please enter a valid port number (1-65535).",
+                if (string.IsNullOrWhiteSpace(terminalIp.Text))
+                {
+                    MessageBox.Show("Please enter a terminal IP address.",
+                        "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (!int.TryParse(portNumber.Text, out int port) || port <= 0 || port > 65535)
+                {
+                    MessageBox.Show("Please enter a valid port number (1-65535).",
+                        "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+            else if (connectionMethod == "USB")
+            {
+                MessageBox.Show("Connection test not supported on USB.",
                     "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
@@ -500,37 +609,41 @@ namespace BakerScaleConnect
             button4.Text = "Testing...";
             this.Cursor = Cursors.WaitCursor;
 
+            bool success = false;
+            string message = "";
+            string connectionInfo = "";
+
             try
             {
-                // Run the test connection in a background task to avoid blocking UI
-                bool success = false;
-                string message = "";
+                // TCP connection test
+                string ipAddress = terminalIp.Text;
+                int port = int.Parse(portNumber.Text);
+                connectionInfo = $"{ipAddress}:{port}";
 
-                await Task.Run(() =>
+                await Task.Run(async () =>
                 {
                     try
                     {
                         using (var client = new System.Net.Sockets.TcpClient())
                         {
-                            // Use a shorter timeout for the connection test (5 seconds)
-                            var connectTask = client.ConnectAsync(terminalIp.Text, port);
-                            if (connectTask.Wait(5000))
+                            using (var cts = new System.Threading.CancellationTokenSource(5000))
                             {
-                                if (client.Connected)
+                                try
                                 {
+                                    await client.ConnectAsync(ipAddress, port, cts.Token);
                                     success = true;
                                     message = "Successfully connected to PAX terminal!";
                                 }
-                                else
+                                catch (OperationCanceledException)
+                                {
+                                    success = false;
+                                    message = "Connection timeout. Terminal did not respond within 5 seconds.";
+                                }
+                                catch (System.Net.Sockets.SocketException)
                                 {
                                     success = false;
                                     message = "Could not establish connection to terminal.";
                                 }
-                            }
-                            else
-                            {
-                                success = false;
-                                message = "Connection timeout. Terminal did not respond within 5 seconds.";
                             }
                         }
                     }
@@ -546,7 +659,8 @@ namespace BakerScaleConnect
                 {
                     MessageBox.Show(
                         $"✅ Connection successful!\n\n" +
-                        $"Terminal: {terminalIp.Text}:{port}\n" +
+                        $"Method: {connectionMethod}\n" +
+                        $"Connection: {connectionInfo}\n" +
                         $"Status: Connected",
                         "PAX Terminal Connection Test",
                         MessageBoxButtons.OK,
@@ -556,12 +670,12 @@ namespace BakerScaleConnect
                 {
                     MessageBox.Show(
                         $"❌ Connection failed.\n\n" +
+                        $"Method: {connectionMethod}\n" +
+                        $"Connection: {connectionInfo}\n" +
                         $"Error: {message}\n\n" +
-                        $"Please verify:\n" +
-                        $"• Terminal IP address is correct ({terminalIp.Text})\n" +
-                        $"• Terminal is powered on and connected to network\n" +
-                        $"• Port {port} is accessible\n" +
-                        $"• No firewall is blocking the connection",
+                        (connectionMethod == "TCP"
+                            ? "Please verify:\n• Terminal IP address is correct\n• Terminal is powered on and connected to network\n• Port is accessible\n• No firewall is blocking the connection"
+                            : "Please verify:\n• Terminal is powered on and connected via USB\n• PAX USB driver is installed\n• Terminal is configured for USB communication\n• PAX service is listening on localhost:10009"),
                         "PAX Terminal Connection Test",
                         MessageBoxButtons.OK,
                         MessageBoxIcon.Error);
@@ -589,19 +703,35 @@ namespace BakerScaleConnect
         /// </summary>
         private async void BtnTestTransaction_Click(object? sender, EventArgs e)
         {
-            // Validate inputs
-            if (string.IsNullOrWhiteSpace(terminalIp.Text))
-            {
-                MessageBox.Show("Please enter a terminal IP address.",
-                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
-            }
+            string connectionMethod = connectionMethodComboBox.Text;
 
-            if (!int.TryParse(portNumber.Text, out int port) || port <= 0 || port > 65535)
+            // Validate based on connection method
+            if (connectionMethod == "TCP")
             {
-                MessageBox.Show("Please enter a valid port number (1-65535).",
-                    "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                return;
+                if (string.IsNullOrWhiteSpace(terminalIp.Text))
+                {
+                    MessageBox.Show("Please enter a terminal IP address.",
+                        "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+
+                if (!int.TryParse(portNumber.Text, out int port) || port <= 0 || port > 65535)
+                {
+                    MessageBox.Show("Please enter a valid port number (1-65535).",
+                        "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
+            }
+            else if (connectionMethod == "USB")
+            {
+                if (string.IsNullOrWhiteSpace(serialPortComboBox.Text) ||
+                    serialPortComboBox.Text == "No ports found" ||
+                    serialPortComboBox.Text == "Error loading ports")
+                {
+                    MessageBox.Show("Please select a valid serial port.",
+                        "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                    return;
+                }
             }
 
             if (!int.TryParse(timeoutTextBox.Text, out int timeout) || timeout < 1000)
@@ -626,10 +756,16 @@ namespace BakerScaleConnect
                 return;
             }
 
+            // Build connection info string
+            string connectionInfo = connectionMethod == "TCP"
+                ? $"{terminalIp.Text}:{portNumber.Text}"
+                : serialPortComboBox.Text;
+
             // Confirm the transaction
             var confirmResult = MessageBox.Show(
                 $"Are you sure you want to run a test transaction for ${amount:F2}?\n\n" +
-                $"Terminal: {terminalIp.Text}:{port}\n\n" +
+                $"Method: {connectionMethod}\n" +
+                $"Connection: {connectionInfo}\n\n" +
                 $"This will process a REAL transaction on the connected terminal.",
                 "Confirm Test Transaction",
                 MessageBoxButtons.YesNo,
@@ -647,9 +783,11 @@ namespace BakerScaleConnect
             btnTestTransaction.Enabled = false;
             btnTestTransaction.Text = "Processing...";
             button4.Enabled = false;
+            connectionMethodComboBox.Enabled = false;
             terminalIp.Enabled = false;
             portNumber.Enabled = false;
             timeoutTextBox.Enabled = false;
+            serialPortComboBox.Enabled = false;
             testAmountTextbox.Enabled = false;
             this.Cursor = Cursors.WaitCursor;
 
@@ -715,10 +853,12 @@ namespace BakerScaleConnect
                 // Re-enable controls
                 btnTestTransaction.Enabled = true;
                 btnTestTransaction.Text = "Run Transaction";
-                btnTestTransaction.Enabled = true;
+                button4.Enabled = true;
+                connectionMethodComboBox.Enabled = true;
                 terminalIp.Enabled = true;
                 portNumber.Enabled = true;
                 timeoutTextBox.Enabled = true;
+                serialPortComboBox.Enabled = true;
                 testAmountTextbox.Enabled = true;
                 this.Cursor = Cursors.Default;
             }
@@ -755,6 +895,16 @@ namespace BakerScaleConnect
         private void button3_Click(object sender, EventArgs e)
         {
 
+        }
+
+        private void button3_Click_1(object sender, EventArgs e)
+        {
+            PopulateSerialPorts();
+        }
+
+        private void button5_Click(object sender, EventArgs e)
+        {
+            BtnTestConnection_Click(sender, e);
         }
     }
 }

@@ -18,9 +18,11 @@ namespace BakerScaleConnect
 
         public class PaxTerminalConfig
         {
+            public string ConnectionMethod { get; set; } = "TCP";
             public string IpAddress { get; set; } = "127.0.0.1";
             public int Port { get; set; } = 10009;
             public int Timeout { get; set; } = 60000;
+            public string SerialPort { get; set; } = "";
         }
 
         /// <summary>

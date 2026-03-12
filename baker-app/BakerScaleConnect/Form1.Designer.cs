@@ -34,31 +34,38 @@
             groupBox1 = new GroupBox();
             labelVolume = new Label();
             comboVolume = new ComboBox();
-            label7 = new Label();
             button2 = new Button();
             label6 = new Label();
             button1 = new Button();
             label5 = new Label();
             label4 = new Label();
             groupBox2 = new GroupBox();
-            comboBox1 = new ComboBox();
+            label11 = new Label();
+            testAmountTextbox = new TextBox();
+            connectionMethodComboBox = new ComboBox();
             tabControl1 = new TabControl();
             tabPage1 = new TabPage();
+            button4 = new Button();
             label10 = new Label();
             timeoutTextBox = new TextBox();
-            btnTestTransaction = new Button();
             label9 = new Label();
             label8 = new Label();
             portNumber = new TextBox();
             terminalIp = new TextBox();
             tabPage2 = new TabPage();
-            button4 = new Button();
-            testAmountTextbox = new TextBox();
-            label11 = new Label();
+            button3 = new Button();
+            label7 = new Label();
+            serialPortComboBox = new ComboBox();
+            btnTestTransaction = new Button();
+            Webserver = new GroupBox();
+            textBox1 = new TextBox();
+            button5 = new Button();
             groupBox1.SuspendLayout();
             groupBox2.SuspendLayout();
             tabControl1.SuspendLayout();
             tabPage1.SuspendLayout();
+            tabPage2.SuspendLayout();
+            Webserver.SuspendLayout();
             SuspendLayout();
             // 
             // label1
@@ -93,7 +100,6 @@
             // 
             groupBox1.Controls.Add(labelVolume);
             groupBox1.Controls.Add(comboVolume);
-            groupBox1.Controls.Add(label7);
             groupBox1.Controls.Add(button2);
             groupBox1.Controls.Add(label6);
             groupBox1.Controls.Add(button1);
@@ -101,7 +107,7 @@
             groupBox1.Controls.Add(label4);
             groupBox1.Location = new Point(12, 509);
             groupBox1.Name = "groupBox1";
-            groupBox1.Size = new Size(517, 285);
+            groupBox1.Size = new Size(517, 236);
             groupBox1.TabIndex = 3;
             groupBox1.TabStop = false;
             groupBox1.Text = "Zebra Scanner/Scale";
@@ -109,7 +115,7 @@
             // labelVolume
             // 
             labelVolume.AutoSize = true;
-            labelVolume.Location = new Point(8, 225);
+            labelVolume.Location = new Point(9, 183);
             labelVolume.Name = "labelVolume";
             labelVolume.Size = new Size(193, 30);
             labelVolume.TabIndex = 6;
@@ -120,23 +126,14 @@
             comboVolume.DropDownStyle = ComboBoxStyle.DropDownList;
             comboVolume.FormattingEnabled = true;
             comboVolume.Items.AddRange(new object[] { "Low", "Medium", "High" });
-            comboVolume.Location = new Point(341, 225);
+            comboVolume.Location = new Point(342, 183);
             comboVolume.Name = "comboVolume";
             comboVolume.Size = new Size(160, 38);
             comboVolume.TabIndex = 7;
             // 
-            // label7
-            // 
-            label7.AutoSize = true;
-            label7.Location = new Point(6, 44);
-            label7.Name = "label7";
-            label7.Size = new Size(348, 30);
-            label7.TabIndex = 5;
-            label7.Text = "✅️ Webserver listening on localhost";
-            // 
             // button2
             // 
-            button2.Location = new Point(341, 179);
+            button2.Location = new Point(342, 137);
             button2.Name = "button2";
             button2.Size = new Size(160, 40);
             button2.TabIndex = 4;
@@ -146,7 +143,7 @@
             // label6
             // 
             label6.AutoSize = true;
-            label6.Location = new Point(8, 179);
+            label6.Location = new Point(9, 137);
             label6.Name = "label6";
             label6.Size = new Size(270, 30);
             label6.TabIndex = 3;
@@ -154,7 +151,7 @@
             // 
             // button1
             // 
-            button1.Location = new Point(341, 133);
+            button1.Location = new Point(342, 91);
             button1.Name = "button1";
             button1.Size = new Size(160, 40);
             button1.TabIndex = 2;
@@ -164,7 +161,7 @@
             // label5
             // 
             label5.AutoSize = true;
-            label5.Location = new Point(8, 133);
+            label5.Location = new Point(9, 91);
             label5.Name = "label5";
             label5.Size = new Size(244, 30);
             label5.TabIndex = 1;
@@ -173,7 +170,7 @@
             // label4
             // 
             label4.AutoSize = true;
-            label4.Location = new Point(6, 89);
+            label4.Location = new Point(7, 47);
             label4.Name = "label4";
             label4.Size = new Size(258, 30);
             label4.TabIndex = 0;
@@ -183,7 +180,7 @@
             // 
             groupBox2.Controls.Add(label11);
             groupBox2.Controls.Add(testAmountTextbox);
-            groupBox2.Controls.Add(comboBox1);
+            groupBox2.Controls.Add(connectionMethodComboBox);
             groupBox2.Controls.Add(tabControl1);
             groupBox2.Controls.Add(btnTestTransaction);
             groupBox2.Location = new Point(12, 197);
@@ -193,15 +190,32 @@
             groupBox2.TabStop = false;
             groupBox2.Text = "PAX Credit Card Terminal";
             // 
-            // comboBox1
+            // label11
             // 
-            comboBox1.FormattingEnabled = true;
-            comboBox1.Items.AddRange(new object[] { "TCP", "USB" });
-            comboBox1.Location = new Point(6, 52);
-            comboBox1.Name = "comboBox1";
-            comboBox1.Size = new Size(216, 38);
-            comboBox1.TabIndex = 1;
-            comboBox1.Text = "USB";
+            label11.AutoSize = true;
+            label11.Location = new Point(571, 135);
+            label11.Name = "label11";
+            label11.Size = new Size(160, 30);
+            label11.TabIndex = 6;
+            label11.Text = "Test Transaction";
+            // 
+            // testAmountTextbox
+            // 
+            testAmountTextbox.Location = new Point(571, 168);
+            testAmountTextbox.Name = "testAmountTextbox";
+            testAmountTextbox.Size = new Size(180, 35);
+            testAmountTextbox.TabIndex = 5;
+            testAmountTextbox.Text = "3";
+            // 
+            // connectionMethodComboBox
+            // 
+            connectionMethodComboBox.FormattingEnabled = true;
+            connectionMethodComboBox.Items.AddRange(new object[] { "TCP", "USB" });
+            connectionMethodComboBox.Location = new Point(6, 52);
+            connectionMethodComboBox.Name = "connectionMethodComboBox";
+            connectionMethodComboBox.Size = new Size(216, 38);
+            connectionMethodComboBox.TabIndex = 1;
+            connectionMethodComboBox.Text = "USB";
             // 
             // tabControl1
             // 
@@ -230,6 +244,15 @@
             tabPage1.Text = "TCP/IP";
             tabPage1.UseVisualStyleBackColor = true;
             // 
+            // button4
+            // 
+            button4.Location = new Point(14, 95);
+            button4.Name = "button4";
+            button4.Size = new Size(204, 40);
+            button4.TabIndex = 7;
+            button4.Text = "Test Connection";
+            button4.UseVisualStyleBackColor = true;
+            // 
             // label10
             // 
             label10.AutoSize = true;
@@ -247,16 +270,6 @@
             timeoutTextBox.Size = new Size(98, 35);
             timeoutTextBox.TabIndex = 5;
             timeoutTextBox.Text = "60000";
-            // 
-            // btnTestTransaction
-            // 
-            btnTestTransaction.Location = new Point(571, 209);
-            btnTestTransaction.Name = "btnTestTransaction";
-            btnTestTransaction.Size = new Size(180, 40);
-            btnTestTransaction.TabIndex = 4;
-            btnTestTransaction.Text = "Test";
-            btnTestTransaction.UseVisualStyleBackColor = true;
-            btnTestTransaction.Click += this.button3_Click;
             // 
             // label9
             // 
@@ -293,45 +306,90 @@
             // 
             // tabPage2
             // 
+            tabPage2.Controls.Add(button5);
+            tabPage2.Controls.Add(button3);
+            tabPage2.Controls.Add(label7);
+            tabPage2.Controls.Add(serialPortComboBox);
             tabPage2.Location = new Point(4, 39);
             tabPage2.Name = "tabPage2";
             tabPage2.Padding = new Padding(3);
-            tabPage2.Size = new Size(735, 157);
+            tabPage2.Size = new Size(517, 157);
             tabPage2.TabIndex = 1;
             tabPage2.Text = "USB";
             tabPage2.UseVisualStyleBackColor = true;
             // 
-            // button4
+            // button3
             // 
-            button4.Location = new Point(14, 95);
-            button4.Name = "button4";
-            button4.Size = new Size(204, 40);
-            button4.TabIndex = 7;
-            button4.Text = "Test Connection";
-            button4.UseVisualStyleBackColor = true;
+            button3.Location = new Point(6, 94);
+            button3.Name = "button3";
+            button3.Size = new Size(155, 40);
+            button3.TabIndex = 2;
+            button3.Text = "Reload";
+            button3.UseVisualStyleBackColor = true;
+            button3.Click += button3_Click_1;
             // 
-            // testAmountTextbox
+            // label7
             // 
-            testAmountTextbox.Location = new Point(571, 168);
-            testAmountTextbox.Name = "testAmountTextbox";
-            testAmountTextbox.Size = new Size(180, 35);
-            testAmountTextbox.TabIndex = 5;
-            testAmountTextbox.Text = "3";
+            label7.AutoSize = true;
+            label7.Location = new Point(6, 17);
+            label7.Name = "label7";
+            label7.Size = new Size(106, 30);
+            label7.TabIndex = 1;
+            label7.Text = "Serial Port";
             // 
-            // label11
+            // serialPortComboBox
             // 
-            label11.AutoSize = true;
-            label11.Location = new Point(571, 135);
-            label11.Name = "label11";
-            label11.Size = new Size(160, 30);
-            label11.TabIndex = 6;
-            label11.Text = "Test Transaction";
+            serialPortComboBox.FormattingEnabled = true;
+            serialPortComboBox.Location = new Point(6, 50);
+            serialPortComboBox.Name = "serialPortComboBox";
+            serialPortComboBox.Size = new Size(212, 38);
+            serialPortComboBox.TabIndex = 0;
+            // 
+            // btnTestTransaction
+            // 
+            btnTestTransaction.Location = new Point(571, 209);
+            btnTestTransaction.Name = "btnTestTransaction";
+            btnTestTransaction.Size = new Size(180, 40);
+            btnTestTransaction.TabIndex = 4;
+            btnTestTransaction.Text = "Test";
+            btnTestTransaction.UseVisualStyleBackColor = true;
+            // 
+            // Webserver
+            // 
+            Webserver.Controls.Add(textBox1);
+            Webserver.Location = new Point(535, 509);
+            Webserver.Name = "Webserver";
+            Webserver.Size = new Size(234, 236);
+            Webserver.TabIndex = 5;
+            Webserver.TabStop = false;
+            Webserver.Text = "Webserver";
+            // 
+            // textBox1
+            // 
+            textBox1.Location = new Point(6, 47);
+            textBox1.Multiline = true;
+            textBox1.Name = "textBox1";
+            textBox1.ReadOnly = true;
+            textBox1.Size = new Size(222, 183);
+            textBox1.TabIndex = 6;
+            textBox1.Text = "✅️ Webserver listening on localhost";
+            // 
+            // button5
+            // 
+            button5.Location = new Point(167, 94);
+            button5.Name = "button5";
+            button5.Size = new Size(204, 40);
+            button5.TabIndex = 8;
+            button5.Text = "Test Connection";
+            button5.UseVisualStyleBackColor = true;
+            button5.Click += button5_Click;
             // 
             // Form1
             // 
             AutoScaleDimensions = new SizeF(12F, 30F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(781, 800);
+            ClientSize = new Size(781, 758);
+            Controls.Add(Webserver);
             Controls.Add(groupBox2);
             Controls.Add(groupBox1);
             Controls.Add(label3);
@@ -347,6 +405,10 @@
             tabControl1.ResumeLayout(false);
             tabPage1.ResumeLayout(false);
             tabPage1.PerformLayout();
+            tabPage2.ResumeLayout(false);
+            tabPage2.PerformLayout();
+            Webserver.ResumeLayout(false);
+            Webserver.PerformLayout();
             ResumeLayout(false);
             PerformLayout();
         }
@@ -362,11 +424,10 @@
         private Button button2;
         private Label label6;
         private Button button1;
-        private Label label7;
         private Label labelVolume;
         private ComboBox comboVolume;
         private GroupBox groupBox2;
-        private ComboBox comboBox1;
+        private ComboBox connectionMethodComboBox;
         private TabControl tabControl1;
         private TabPage tabPage1;
         private TabPage tabPage2;
@@ -380,5 +441,11 @@
         private Button btnTestTransaction;
         private Button button4;
         private TextBox testAmountTextbox;
+        private Label label7;
+        private ComboBox serialPortComboBox;
+        private GroupBox Webserver;
+        private TextBox textBox1;
+        private Button button3;
+        private Button button5;
     }
 }

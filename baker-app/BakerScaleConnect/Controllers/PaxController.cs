@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using BakerScaleConnect.Controllers.Models;
 using BakerScaleConnect.Services;
+using POSLinkAdmin.Util;
 
 namespace BakerScaleConnect.Controllers
 {
@@ -41,6 +42,11 @@ namespace BakerScaleConnect.Controllers
                         Timestamp = DateTime.UtcNow
                     });
                 }
+
+                //convert amount to decimal
+                var amount = decimal.Parse(request.Amount);
+                amount *= 100;
+                request.Amount = amount.ToString("F0");
 
                 // Process the payment
                 var response = paxService.ProcessCreditPayment(request);
@@ -109,7 +115,12 @@ namespace BakerScaleConnect.Controllers
                     return BadRequest(new { error = "Timeout must be at least 1000 milliseconds" });
                 }
 
-                paxService.UpdateSettings(settings.Ip, settings.Port, settings.Timeout);
+                paxService.UpdateSettings(
+                    settings.ConnectionMethod,
+                    settings.Ip,
+                    settings.Port,
+                    settings.Timeout,
+                    settings.SerialPort);
                 return Ok(settings);
             }
             catch (Exception ex)

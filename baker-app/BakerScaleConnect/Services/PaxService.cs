@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using POSLinkCore.CommunicationSetting;
 using POSLinkSemiIntegration;
 using POSLinkSemiIntegration.Transaction;
+using POSLinkUart;
 
 namespace BakerScaleConnect.Services
 {
@@ -13,11 +14,13 @@ namespace BakerScaleConnect.Services
     {
         private readonly ILogger<PaxService> _logger;
         private readonly PaxTerminalSettings _settings;
+        private string _connectionMethod = "TCP";
+        private string _serialPort = "";
 
         public PaxService(ILogger<PaxService> logger)
         {
             _logger = logger;
-            
+
             // Default settings - can be configured via appsettings or environment
             _settings = new PaxTerminalSettings
             {
@@ -34,20 +37,35 @@ namespace BakerScaleConnect.Services
         {
             try
             {
-                _logger.LogInformation("Processing credit payment: Amount={Amount}, EcrRef={EcrRef}", 
-                    paymentRequest.Amount, paymentRequest.EcrReferenceNumber);
+                _logger.LogInformation("Processing credit payment: Amount={Amount}, EcrRef={EcrRef}, Method={Method}", 
+                    paymentRequest.Amount, paymentRequest.EcrReferenceNumber, _connectionMethod);
 
-                // Configure TCP settings
-                TcpSetting tcpSetting = new()
-                {
-                    Ip = _settings.Ip,
-                    Port = _settings.Port,
-                    Timeout = _settings.Timeout
-                };
-
-                // Get POSLink instance and terminal
+                // Get POSLink instance
                 POSLinkSemi poslinkSemi = POSLinkSemi.GetPOSLinkSemi();
-                Terminal terminal = poslinkSemi.GetTerminal(tcpSetting);
+                Terminal terminal;
+
+                // Configure connection based on method
+                if (_connectionMethod == "USB")
+                {
+                    UartSetting uartSetting = new()
+                    {
+                        BaudRate = 115200,
+                        Timeout = _settings.Timeout,
+                        SerialPortName = _serialPort,
+                    };
+                    terminal = poslinkSemi.GetTerminal(uartSetting);
+                }
+                else
+                {
+                    // Configure TCP settings
+                    TcpSetting tcpSetting = new()
+                    {
+                        Ip = _settings.Ip,
+                        Port = _settings.Port,
+                        Timeout = _settings.Timeout
+                    };
+                    terminal = poslinkSemi.GetTerminal(tcpSetting);
+                }
 
                 // Create the credit request
                 DoCreditRequest request = new();
@@ -125,26 +143,28 @@ namespace BakerScaleConnect.Services
         /// <summary>
         /// Update terminal connection settings.
         /// </summary>
-        public void UpdateSettings(string ip, int port, int timeout)
+        public void UpdateSettings(string connectionMethod, string ip, int port, int timeout, string serialPort)
         {
+            _connectionMethod = connectionMethod;
             _settings.Ip = ip;
             _settings.Port = port;
             _settings.Timeout = timeout;
-            _logger.LogInformation("PAX terminal settings updated: IP={Ip}, Port={Port}, Timeout={Timeout}", 
-                ip, port, timeout);
+            _serialPort = serialPort;
+            _logger.LogInformation("PAX terminal settings updated: Method={Method}, IP={Ip}, Port={Port}, Timeout={Timeout}, SerialPort={SerialPort}", 
+                connectionMethod, ip, port, timeout, serialPort);
         }
 
         /// <summary>
         /// Get current terminal settings.
         /// </summary>
-        public PaxTerminalSettings GetSettings()
+        public (string ConnectionMethod, PaxTerminalSettings Settings, string SerialPort) GetSettings()
         {
-            return new PaxTerminalSettings
+            return (_connectionMethod, new PaxTerminalSettings
             {
                 Ip = _settings.Ip,
                 Port = _settings.Port,
                 Timeout = _settings.Timeout
-            };
+            }, _serialPort);
         }
     }
 }
