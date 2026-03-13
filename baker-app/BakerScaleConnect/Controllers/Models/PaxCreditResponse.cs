@@ -22,5 +22,13 @@ namespace BakerScaleConnect.Controllers.Models
 
         /// <summary>Timestamp of the transaction (UTC).</summary>
         public DateTime Timestamp { get; set; }
+        public string? CardBin { get; set; }
+        public string? AuthorizationCode {get;set;}
+        public string? BatchNumber {get;set;}
+        public string? ControlNumber {get;set;}
+        public string? GatewayTransactionId {get;set;}
+        public string? HostDetailedMessage {get;set;}
+        public string? HostReferenceNumber {get;set;}
+        public string RawResponse { get; set; }
     }
 }

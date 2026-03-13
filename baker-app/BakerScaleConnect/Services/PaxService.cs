@@ -5,6 +5,8 @@ using POSLinkSemiIntegration;
 using POSLinkSemiIntegration.Batch;
 using POSLinkSemiIntegration.Transaction;
 using POSLinkUart;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace BakerScaleConnect.Services
 {
@@ -142,13 +144,30 @@ namespace BakerScaleConnect.Services
                         _logger.LogInformation("Credit payment successful: Code={Code}, Message={Message}",
                             creditResponse.ResponseCode, creditResponse.ResponseMessage);
 
+                        
                         return new PaxCreditResponse
                         {
                             Success = true,
                             ResponseCode = creditResponse.ResponseCode ?? "",
                             ResponseMessage = creditResponse.ResponseMessage ?? "",
                             EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
-                            Timestamp = DateTime.UtcNow
+                            Timestamp = DateTime.UtcNow,
+                            
+                            CardBin = creditResponse.AccountInformation.CardBin,
+                            AuthorizationCode = creditResponse.HostInformation.AuthorizationCode,
+                            BatchNumber = creditResponse.HostInformation.BatchNumber,
+                            ControlNumber = creditResponse.HostInformation.ControlNumber,
+                            GatewayTransactionId = creditResponse.HostInformation.GatewayTransactionId,
+                            HostDetailedMessage = creditResponse.HostInformation.HostDetailedMessage,
+                            HostReferenceNumber = creditResponse.HostInformation.HostReferenceNumber,
+                            RawResponse = JsonSerializer.Serialize(
+                                creditResponse,
+                                new JsonSerializerOptions
+                                {
+                                    WriteIndented = true,
+                                    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+                                }
+                            )
                         };
                     }
                     else
