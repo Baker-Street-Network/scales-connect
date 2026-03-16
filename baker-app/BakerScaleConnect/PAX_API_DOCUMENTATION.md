@@ -128,6 +128,78 @@ Cancels the current operation on the PAX terminal. This will cancel any in-progr
 }
 ```
 
+### Display Items on Terminal
+**POST** `/api/pax/showitem`
+
+Display ordered items on the PAX terminal screen. This uses the ShowItemRequest command to communicate with the BroadPOS app on the payment terminal, allowing customers to see their order details during payment.
+
+**Use Cases:**
+- Show order items before payment
+- Display shopping cart on terminal screen
+- Provide order transparency to customers
+- Show itemized list during checkout
+
+**Request Body:**
+```json
+{
+  "items": [
+    {
+      "name": "Coffee",
+      "price": "3.50",
+      "quantity": 2,
+      "sku": "ITEM001"
+    },
+    {
+      "name": "Muffin",
+      "price": "2.75",
+      "quantity": 1,
+      "sku": "ITEM002"
+    }
+  ],
+  "ecrReferenceNumber": "ORDER-2024-001"
+}
+```
+
+**Fields:**
+- `items` (required): Array of items to display
+  - `name` (required): Item name/description
+  - `price` (required): Item price as a decimal string (e.g., "10.50")
+  - `quantity` (required): Item quantity
+  - `sku` (optional): Item SKU or product code
+- `ecrReferenceNumber` (optional): Unique reference number for tracking
+
+**Response (200 OK):**
+```json
+{
+  "success": true,
+  "responseCode": "000000",
+  "responseMessage": "OK",
+  "ecrReferenceNumber": "ORDER-2024-001",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+**Response (400 Bad Request - Invalid Input):**
+```json
+{
+  "success": false,
+  "errorMessage": "At least one item is required",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
+**Response (502 Bad Gateway - Terminal Error):**
+```json
+{
+  "success": false,
+  "responseCode": "",
+  "responseMessage": "",
+  "ecrReferenceNumber": "ORDER-2024-001",
+  "errorMessage": "Show item failed with error code: ...",
+  "timestamp": "2024-01-15T10:30:00Z"
+}
+```
+
 ## Configuration
 
 Default terminal settings:
@@ -198,6 +270,52 @@ curl -X POST http://localhost:5000/api/pax/credit \
 
 # Cancel it if needed
 curl -X POST http://localhost:5000/api/pax/cancel
+```
+
+### Display Items on Terminal:
+```bash
+curl -X POST http://localhost:5000/api/pax/showitem \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {
+        "name": "Coffee",
+        "price": "3.50",
+        "quantity": 2,
+        "sku": "ITEM001"
+      },
+      {
+        "name": "Muffin",
+        "price": "2.75",
+        "quantity": 1,
+        "sku": "ITEM002"
+      }
+    ],
+    "ecrReferenceNumber": "ORDER-2024-001"
+  }'
+```
+
+**Complete checkout workflow example:**
+```bash
+# 1. Show items on terminal before payment
+curl -X POST http://localhost:5000/api/pax/showitem \
+  -H "Content-Type: application/json" \
+  -d '{
+    "items": [
+      {"name": "Coffee", "price": "3.50", "quantity": 2},
+      {"name": "Muffin", "price": "2.75", "quantity": 1}
+    ],
+    "ecrReferenceNumber": "ORDER-2024-001"
+  }'
+
+# 2. Process payment
+curl -X POST http://localhost:5000/api/pax/credit \
+  -H "Content-Type: application/json" \
+  -d '{
+    "amount": "9.75",
+    "ecrReferenceNumber": "ORDER-2024-001",
+    "transactionType": "Sale"
+  }'
 ```
 
 ## Batch Closing Operations

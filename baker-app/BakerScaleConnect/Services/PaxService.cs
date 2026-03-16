@@ -410,5 +410,241 @@ namespace BakerScaleConnect.Services
                 };
             }
         }
+
+        /// <summary>
+        /// Display items on the PAX terminal screen using the ShowItemRequest command.
+        /// This communicates with the BroadPOS app on the payment terminal.
+        /// Note: This requires PAX SDK support for ShowItemRequest. If not available in your SDK version,
+        /// consider updating to the latest POSLink SDK from PAX.
+        /// </summary>
+        public async Task<PaxShowItemResponse> ShowItemsAsync(PaxShowItemRequest showItemRequest, CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                _logger.LogInformation("Showing items on PAX terminal: ItemCount={ItemCount}, EcrRef={EcrRef}",
+                    showItemRequest.Items.Count, showItemRequest.EcrReferenceNumber);
+
+                // Get POSLink instance
+                POSLinkSemi poslinkSemi = POSLinkSemi.GetPOSLinkSemi();
+                Terminal terminal;
+
+                // Configure connection based on method
+                if (_connectionMethod == "USB")
+                {
+                    UartSetting uartSetting = new()
+                    {
+                        BaudRate = 115200,
+                        Timeout = _settings.Timeout,
+                        SerialPortName = _serialPort,
+                    };
+                    terminal = poslinkSemi.GetTerminal(uartSetting);
+                }
+                else
+                {
+                    // Configure TCP settings
+                    TcpSetting tcpSetting = new()
+                    {
+                        Ip = _settings.Ip,
+                        Port = _settings.Port,
+                        Timeout = _settings.Timeout
+                    };
+                    terminal = poslinkSemi.GetTerminal(tcpSetting);
+                }
+
+                // Store active terminal for cancellation
+                lock (_terminalLock)
+                {
+                    _activeTerminal = terminal;
+                }
+
+                try
+                {
+                    // Note: The ShowItemRequest API is part of the PAX POSLink SDK for BroadPOS integration.
+                    // If this method is not available in your SDK version, you may need to:
+                    // 1. Update to the latest PAX POSLink SDK
+                    // 2. Contact PAX support for the ShowItemRequest documentation
+                    // 3. Use an alternative approach like sending custom messages
+
+                    // For now, we'll use reflection to attempt to call the ShowItem method if it exists
+                    var transactionType = terminal.Transaction.GetType();
+                    var showItemMethod = transactionType.GetMethod("ShowItem");
+
+                    if (showItemMethod == null)
+                    {
+                        _logger.LogWarning("ShowItem method not found in PAX SDK. SDK version may not support this feature.");
+                        return new PaxShowItemResponse
+                        {
+                            Success = false,
+                            ResponseCode = "",
+                            ResponseMessage = "",
+                            EcrReferenceNumber = showItemRequest.EcrReferenceNumber,
+                            ErrorMessage = "ShowItem feature not available in current PAX SDK version. Please update to the latest POSLink SDK or contact PAX support.",
+                            Timestamp = DateTime.UtcNow
+                        };
+                    }
+
+                    // Dynamically create the request using reflection
+                    var showItemRequestType = Type.GetType("POSLinkSemiIntegration.Transaction.ShowItemRequest, POSLinkSemiIntegration");
+                    if (showItemRequestType == null)
+                    {
+                        _logger.LogWarning("ShowItemRequest type not found in PAX SDK.");
+                        return new PaxShowItemResponse
+                        {
+                            Success = false,
+                            ResponseCode = "",
+                            ResponseMessage = "",
+                            EcrReferenceNumber = showItemRequest.EcrReferenceNumber,
+                            ErrorMessage = "ShowItemRequest not available in current PAX SDK version.",
+                            Timestamp = DateTime.UtcNow
+                        };
+                    }
+
+                    var request = Activator.CreateInstance(showItemRequestType);
+
+                    // Get the Items property
+                    var itemsProperty = showItemRequestType.GetProperty("Items");
+                    if (itemsProperty != null)
+                    {
+                        var itemsList = itemsProperty.GetValue(request);
+                        var addMethod = itemsList?.GetType().GetMethod("Add");
+
+                        // Get ItemInformation type
+                        var itemInfoType = showItemRequestType.GetNestedType("ItemInformation");
+
+                        if (itemInfoType != null && addMethod != null)
+                        {
+                            // Add items to the request
+                            foreach (var item in showItemRequest.Items)
+                            {
+                                var itemInfo = Activator.CreateInstance(itemInfoType);
+
+                                itemInfoType.GetProperty("ItemName")?.SetValue(itemInfo, item.Name);
+                                itemInfoType.GetProperty("ItemPrice")?.SetValue(itemInfo, item.Price);
+                                itemInfoType.GetProperty("ItemQuantity")?.SetValue(itemInfo, item.Quantity.ToString());
+
+                                if (!string.IsNullOrWhiteSpace(item.Sku))
+                                {
+                                    itemInfoType.GetProperty("ItemCode")?.SetValue(itemInfo, item.Sku);
+                                }
+
+                                addMethod.Invoke(itemsList, new[] { itemInfo });
+                            }
+                        }
+                    }
+
+                    // Set trace information if provided
+                    if (!string.IsNullOrWhiteSpace(showItemRequest.EcrReferenceNumber))
+                    {
+                        var traceInfoProperty = showItemRequestType.GetProperty("TraceInformation");
+                        if (traceInfoProperty != null)
+                        {
+                            var traceReq = new POSLinkSemiIntegration.Util.TraceRequest
+                            {
+                                EcrReferenceNumber = showItemRequest.EcrReferenceNumber
+                            };
+                            traceInfoProperty.SetValue(request, traceReq);
+                        }
+                    }
+
+                    // Execute the show item request with cancellation support
+                    var executeTask = Task.Run(() =>
+                    {
+                        var parameters = new object?[] { request, null };
+                        var execResult = showItemMethod.Invoke(terminal.Transaction, parameters);
+                        return (execResult, parameters[1]);
+                    }, cancellationToken);
+
+                    try
+                    {
+                        var taskResult = await executeTask;
+                        var result = taskResult.execResult as POSLinkAdmin.ExecutionResult;
+                        var showItemResponse = taskResult.Item2;
+
+                        if (result != null && result.GetErrorCode() == POSLinkAdmin.ExecutionResult.Code.Ok && showItemResponse != null)
+                        {
+                            var responseType = showItemResponse.GetType();
+                            var responseCode = responseType.GetProperty("ResponseCode")?.GetValue(showItemResponse) as string ?? "";
+                            var responseMessage = responseType.GetProperty("ResponseMessage")?.GetValue(showItemResponse) as string ?? "";
+
+                            _logger.LogInformation("Show item successful: Code={Code}, Message={Message}",
+                                responseCode, responseMessage);
+
+                            return new PaxShowItemResponse
+                            {
+                                Success = true,
+                                ResponseCode = responseCode,
+                                ResponseMessage = responseMessage,
+                                EcrReferenceNumber = showItemRequest.EcrReferenceNumber,
+                                Timestamp = DateTime.UtcNow
+                            };
+                        }
+                        else
+                        {
+                            var errorCode = result?.GetErrorCode().ToString() ?? "Unknown";
+                            _logger.LogError("Show item failed: ErrorCode={ErrorCode}", errorCode);
+
+                            return new PaxShowItemResponse
+                            {
+                                Success = false,
+                                ResponseCode = "",
+                                ResponseMessage = "",
+                                EcrReferenceNumber = showItemRequest.EcrReferenceNumber,
+                                ErrorMessage = $"Show item failed with error code: {errorCode}",
+                                Timestamp = DateTime.UtcNow
+                            };
+                        }
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        _logger.LogWarning("Show item operation cancelled by user");
+                        terminal.Cancel();
+
+                        return new PaxShowItemResponse
+                        {
+                            Success = false,
+                            ResponseCode = "",
+                            ResponseMessage = "",
+                            EcrReferenceNumber = showItemRequest.EcrReferenceNumber,
+                            ErrorMessage = "Show item operation cancelled by user",
+                            Timestamp = DateTime.UtcNow
+                        };
+                    }
+                }
+                finally
+                {
+                    // Clear active terminal
+                    lock (_terminalLock)
+                    {
+                        _activeTerminal = null;
+                    }
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Show item operation cancelled before completion");
+                return new PaxShowItemResponse
+                {
+                    Success = false,
+                    ResponseCode = "",
+                    ResponseMessage = "",
+                    EcrReferenceNumber = showItemRequest.EcrReferenceNumber,
+                    ErrorMessage = "Show item operation cancelled",
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error showing items on PAX terminal");
+                return new PaxShowItemResponse
+                {
+                    Success = false,
+                    ResponseCode = "",
+                    ResponseMessage = "",
+                    EcrReferenceNumber = showItemRequest.EcrReferenceNumber,
+                    ErrorMessage = ex.Message,
+                    Timestamp = DateTime.UtcNow
+                };
+            }
+        }
     }
 }
