@@ -3,6 +3,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Win32;
+using Velopack;
 
 namespace BakerScaleConnect
 {
@@ -14,6 +15,9 @@ namespace BakerScaleConnect
         [STAThread]
         static async Task Main()
         {
+            // Velopack: Handle installation/uninstallation events
+            VelopackApp.Build().Run();
+
             AddToStartup();
 
             ApplicationConfiguration.Initialize();
