@@ -31,7 +31,10 @@ namespace BakerScaleConnect
                     
                     // Register the web server hosted service
                     services.AddHostedService<WebServerHostedService>();
-                    
+
+                    // Monitor the watchdog service and restart it if it stops
+                    services.AddHostedService<WatchdogMonitorService>();
+
                     // Register scanner manager as singleton
                     services.AddSingleton<ScannerManager>();
 
