@@ -35,6 +35,9 @@ namespace BakerScaleConnect
                     // Monitor the watchdog service and restart it if it stops
                     services.AddHostedService<WatchdogMonitorService>();
 
+                    // Self-updater: checks GitHub Releases and applies updates automatically
+                    services.AddHostedService<UpdateService>();
+
                     // Register scanner manager as singleton
                     services.AddSingleton<ScannerManager>();
 
