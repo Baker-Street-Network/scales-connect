@@ -71,7 +71,7 @@ namespace BakerScaleConnect.Services
                     // Note: You might want to prompt the user first in a production app
                     // For now, we'll just apply it silently on next manual restart
                     // Uncomment the line below to auto-restart:
-                    // _updateManager.ApplyUpdatesAndRestart(newVersion);
+                    _updateManager.ApplyUpdatesAndRestart(newVersion);
                 }
                 else
                 {
