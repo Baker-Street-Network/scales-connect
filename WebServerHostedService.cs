@@ -17,11 +17,11 @@ namespace BakerScaleConnect.Services
         {
             try
             {
-                logger.LogInformation("Starting web server on http://localhost:5000");
+                logger.LogInformation("Starting web server on http://0.0.0.0:5000");
 
                 _webHost = new WebHostBuilder()
                     .UseKestrel()
-                    .UseUrls("http://localhost:5000")
+                    .UseUrls("http://0.0.0.0:5000")
                     .ConfigureServices(services =>
                     {
                         services.AddCors(options =>

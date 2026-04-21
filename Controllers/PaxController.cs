@@ -340,6 +340,11 @@ namespace BakerScaleConnect.Controllers
         }
     }
 
-    public record PhoneCollectRequest(string OrderId);
-    public record PhoneResultRequest(string OrderId, string? Phone, bool Skipped);
+    public record PhoneCollectRequest(
+        [property: System.Text.Json.Serialization.JsonPropertyName("order_id")] string OrderId);
+
+    public record PhoneResultRequest(
+        [property: System.Text.Json.Serialization.JsonPropertyName("order_id")] string OrderId,
+        [property: System.Text.Json.Serialization.JsonPropertyName("phone")] string? Phone,
+        [property: System.Text.Json.Serialization.JsonPropertyName("skipped")] bool Skipped);
 }

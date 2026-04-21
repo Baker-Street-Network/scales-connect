@@ -18,7 +18,6 @@ namespace BakerScaleConnect.Services
         private readonly ILogger<PhoneCollectService> _logger;
         private readonly AppSettings _settings;
 
-        // Pending requests waiting for terminal callback
         private readonly ConcurrentDictionary<string, TaskCompletionSource<PhoneResult>> _pending = new();
 
         public PhoneCollectService(ILogger<PhoneCollectService> logger, AppSettings settings)
@@ -38,22 +37,35 @@ namespace BakerScaleConnect.Services
             if (string.IsNullOrWhiteSpace(aries.TerminalIp))
                 throw new InvalidOperationException("Aries terminal IP not configured in settings.");
 
-            var tcs = new TaskCompletionSource<PhoneResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            _pending[orderId] = tcs;
+            if (aries.PhonePort is < 1 or > 65535)
+                throw new InvalidOperationException($"Aries PhonePort {aries.PhonePort} is not a valid TCP port (1-65535).");
+
+            if (aries.CallbackPort is < 1 or > 65535)
+                throw new InvalidOperationException($"Aries CallbackPort {aries.CallbackPort} is not a valid TCP port (1-65535).");
+
+            if (aries.TimeoutSeconds <= 0)
+                throw new InvalidOperationException("Aries TimeoutSeconds must be greater than 0.");
+
+            // Reuse existing TCS if a request for this order is already in flight
+            var tcs = _pending.GetOrAdd(orderId,
+                _ => new TaskCompletionSource<PhoneResult>(TaskCreationOptions.RunContinuationsAsynchronously));
+
+            // If already completed (e.g. result arrived before we awaited), return immediately
+            if (tcs.Task.IsCompleted)
+                return await tcs.Task;
 
             try
             {
-                await SendTcpTriggerAsync(orderId, aries.TerminalIp, aries.PhonePort, aries.CallbackPort);
-
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(aries.TimeoutSeconds));
+
+                await SendTcpTriggerAsync(orderId, aries.TerminalIp, aries.PhonePort, aries.CallbackPort, timeoutCts.Token);
 
                 var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(Timeout.Infinite, timeoutCts.Token));
 
                 if (completedTask == tcs.Task)
                     return await tcs.Task;
 
-                // Timeout — return skipped result
                 _logger.LogWarning("Phone collect timed out for order {OrderId}", orderId);
                 return new PhoneResult { OrderId = orderId, Phone = "", Skipped = true };
             }
@@ -76,8 +88,10 @@ namespace BakerScaleConnect.Services
             if (_pending.TryGetValue(result.OrderId, out var tcs))
             {
                 tcs.TrySetResult(result);
+                // Log masked phone — last 4 digits only to avoid PII in logs
+                var masked = result.Skipped ? "(none)" : MaskPhone(result.Phone);
                 _logger.LogInformation("Phone result received — order={OrderId} skipped={Skipped} phone={Phone}",
-                    result.OrderId, result.Skipped, result.Skipped ? "(none)" : result.Phone);
+                    result.OrderId, result.Skipped, masked);
             }
             else
             {
@@ -99,13 +113,15 @@ namespace BakerScaleConnect.Services
             return false;
         }
 
-        private async Task SendTcpTriggerAsync(string orderId, string ip, int port, int callbackPort)
+        private async Task SendTcpTriggerAsync(string orderId, string ip, int port, int callbackPort, CancellationToken ct)
         {
+            var callbackIp = GetLocalIpTowards(ip);
+
             var trigger = new
             {
                 action = "collect_phone",
                 order_id = orderId,
-                callback_ip = GetLocalIp(),
+                callback_ip = callbackIp,
                 callback_port = callbackPort
             };
 
@@ -113,18 +129,28 @@ namespace BakerScaleConnect.Services
             byte[] data = Encoding.UTF8.GetBytes(json + "\n");
 
             using var client = new TcpClient();
-            await client.ConnectAsync(ip, port);
-            await client.GetStream().WriteAsync(data);
+            await client.ConnectAsync(ip, port).WaitAsync(ct);
+            await client.GetStream().WriteAsync(data, 0, data.Length, ct);
 
             _logger.LogInformation("TCP trigger sent to {Ip}:{Port} for order {OrderId}", ip, port, orderId);
         }
 
-        private string GetLocalIp()
+        /// <summary>
+        /// Returns the local IP address that would be used to reach the given destination.
+        /// Ensures callback_ip is reachable from the terminal on the same network segment.
+        /// </summary>
+        private static string GetLocalIpTowards(string destinationIp)
         {
-            // Get the local IP that the terminal can reach back to
             using var socket = new Socket(AddressFamily.InterNetwork, SocketType.Dgram, ProtocolType.Udp);
-            socket.Connect("8.8.8.8", 80);
-            return (socket.LocalEndPoint as System.Net.IPEndPoint)!.Address.ToString();
+            socket.Connect(destinationIp, 80);
+            return ((System.Net.IPEndPoint)socket.LocalEndPoint!).Address.ToString();
+        }
+
+        private static string MaskPhone(string phone)
+        {
+            if (string.IsNullOrEmpty(phone) || phone.Length < 4)
+                return "****";
+            return new string('*', phone.Length - 4) + phone[^4..];
         }
     }
 }
