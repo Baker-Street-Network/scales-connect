@@ -10,7 +10,7 @@ namespace BakerScaleConnect.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class PaxController(PaxService paxService) : ControllerBase
+    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService) : ControllerBase
     {
         /// <summary>
         /// Process a credit card payment transaction.
@@ -287,5 +287,59 @@ namespace BakerScaleConnect.Controllers
         [HttpGet("health")]
         public ActionResult GetHealth() =>
             Ok(new { status = "healthy", service = "pax", timestamp = DateTime.UtcNow });
+
+        /// <summary>
+        /// Trigger phone number collection on Aries 8 terminal.
+        /// Called by Odoo on first item scan. Sends TCP trigger and waits for result.
+        /// </summary>
+        [HttpPost("phonecollect")]
+        public async Task<ActionResult> PhoneCollect(
+            [FromBody] PhoneCollectRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(request.OrderId))
+                return BadRequest(new { error = "order_id is required" });
+
+            try
+            {
+                var result = await phoneCollectService.RequestPhoneAsync(request.OrderId, cancellationToken);
+                return Ok(new
+                {
+                    order_id = result.OrderId,
+                    phone = result.Phone,
+                    skipped = result.Skipped
+                });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return StatusCode(503, new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = ex.Message });
+            }
+        }
+
+        /// <summary>
+        /// Receive phone result posted back from the Aries 8 terminal app.
+        /// </summary>
+        [HttpPost("phone_result")]
+        public ActionResult PhoneResult([FromBody] PhoneResultRequest request)
+        {
+            if (string.IsNullOrWhiteSpace(request.OrderId))
+                return BadRequest(new { error = "order_id is required" });
+
+            phoneCollectService.ResolveResult(new Services.PhoneResult
+            {
+                OrderId = request.OrderId,
+                Phone = request.Phone ?? "",
+                Skipped = request.Skipped
+            });
+
+            return Ok(new { received = true });
+        }
     }
+
+    public record PhoneCollectRequest(string OrderId);
+    public record PhoneResultRequest(string OrderId, string? Phone, bool Skipped);
 }

@@ -35,6 +35,7 @@ namespace BakerScaleConnect.Services
                         services.AddSingleton(serviceProvider.GetRequiredService<ScannerManager>());
                         services.AddSingleton(serviceProvider.GetRequiredService<ScaleWeightCache>());
                         services.AddSingleton(serviceProvider.GetRequiredService<PaxService>());
+                        services.AddSingleton(serviceProvider.GetRequiredService<PhoneCollectService>());
                         services.AddScoped<ConnectivityService>();
                     })
                     .Configure(app =>

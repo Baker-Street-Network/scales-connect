@@ -15,6 +15,7 @@ namespace BakerScaleConnect
         );
 
         public PaxTerminalConfig PaxTerminal { get; set; } = new();
+        public AriesConfig Aries { get; set; } = new();
 
         public class PaxTerminalConfig
         {
@@ -23,6 +24,14 @@ namespace BakerScaleConnect
             public int Port { get; set; } = 10009;
             public int Timeout { get; set; } = 60000;
             public string SerialPort { get; set; } = "";
+        }
+
+        public class AriesConfig
+        {
+            public string TerminalIp { get; set; } = "";
+            public int PhonePort { get; set; } = 9999;
+            public int CallbackPort { get; set; } = 5000;
+            public int TimeoutSeconds { get; set; } = 90;
         }
 
         /// <summary>

@@ -50,6 +50,11 @@ namespace BakerScaleConnect
                     // Register PAX service
                     services.AddSingleton<PaxService>();
 
+                    // Register phone collect service (Aries 8 integration)
+                    services.AddSingleton(sp => new PhoneCollectService(
+                        sp.GetRequiredService<ILogger<PhoneCollectService>>(),
+                        AppSettings.Load()));
+
                     // Add logging
                     services.AddLogging(builder =>
                     {
