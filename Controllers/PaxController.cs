@@ -323,7 +323,7 @@ namespace BakerScaleConnect.Controllers
         /// <summary>
         /// Receive phone result posted back from the Aries 8 terminal app.
         /// </summary>
-        [HttpPost("phone_result")]
+        [HttpPost("phoneresult")]
         public ActionResult PhoneResult([FromBody] PhoneResultRequest request)
         {
             if (string.IsNullOrWhiteSpace(request.OrderId))

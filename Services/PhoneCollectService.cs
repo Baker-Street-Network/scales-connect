@@ -99,20 +99,6 @@ namespace BakerScaleConnect.Services
             }
         }
 
-        /// <summary>
-        /// Check if a result is available without blocking (used by polling endpoint).
-        /// </summary>
-        public bool TryGetPendingResult(string orderId, out PhoneResult? result)
-        {
-            if (_pending.TryGetValue(orderId, out var tcs) && tcs.Task.IsCompleted)
-            {
-                result = tcs.Task.Result;
-                return true;
-            }
-            result = null;
-            return false;
-        }
-
         private async Task SendTcpTriggerAsync(string orderId, string ip, int port, int callbackPort, CancellationToken ct)
         {
             var callbackIp = GetLocalIpTowards(ip);
