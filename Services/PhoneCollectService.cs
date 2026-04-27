@@ -59,11 +59,7 @@ namespace BakerScaleConnect.Services
                 using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
                 timeoutCts.CancelAfter(TimeSpan.FromSeconds(aries.TimeoutSeconds));
 
-                var callbackIp = !string.IsNullOrWhiteSpace(aries.CallbackIp)
-                    ? aries.CallbackIp
-                    : GetLocalIpTowards(aries.TerminalIp);
-
-                await SendTcpTriggerAsync(orderId, aries.TerminalIp, aries.PhonePort, callbackIp, aries.CallbackPort, timeoutCts.Token);
+                await SendTcpTriggerAsync(orderId, aries.TerminalIp, aries.PhonePort, aries.CallbackPort, timeoutCts.Token);
 
                 var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(Timeout.Infinite, timeoutCts.Token));
 
@@ -117,8 +113,10 @@ namespace BakerScaleConnect.Services
             return false;
         }
 
-        private async Task SendTcpTriggerAsync(string orderId, string ip, int port, string callbackIp, int callbackPort, CancellationToken ct)
+        private async Task SendTcpTriggerAsync(string orderId, string ip, int port, int callbackPort, CancellationToken ct)
         {
+            var callbackIp = GetLocalIpTowards(ip);
+
             var trigger = new
             {
                 action = "collect_phone",
