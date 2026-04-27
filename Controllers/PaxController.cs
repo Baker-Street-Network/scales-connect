@@ -10,7 +10,7 @@ namespace BakerScaleConnect.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService) : ControllerBase
+    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService, ILogger<PaxController> logger) : ControllerBase
     {
         /// <summary>
         /// Process a credit card payment transaction.
@@ -316,7 +316,8 @@ namespace BakerScaleConnect.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { error = ex.Message });
+                logger.LogError(ex, "Unhandled error in PhoneCollect for order {OrderId}", request.OrderId);
+                return StatusCode(500, new { error = "An unexpected error occurred." });
             }
         }
 
