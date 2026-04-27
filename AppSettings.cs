@@ -30,6 +30,7 @@ namespace BakerScaleConnect
         {
             public string TerminalIp { get; set; } = "";
             public int PhonePort { get; set; } = 9999;
+            public string CallbackIp { get; set; } = "";
             public int CallbackPort { get; set; } = 5000;
             public int TimeoutSeconds { get; set; } = 90;
         }
