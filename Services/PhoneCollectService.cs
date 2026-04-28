@@ -101,7 +101,8 @@ namespace BakerScaleConnect.Services
 
         private async Task SendTcpTriggerAsync(string orderId, string ip, int port, int callbackPort, CancellationToken ct)
         {
-            var callbackIp = GetLocalIpTowards(ip);
+            var overrideIp = _settings.Aries.CallbackIp;
+            var callbackIp = string.IsNullOrWhiteSpace(overrideIp) ? GetLocalIpTowards(ip) : overrideIp;
 
             var trigger = new
             {
@@ -116,7 +117,11 @@ namespace BakerScaleConnect.Services
 
             using var client = new TcpClient();
             await client.ConnectAsync(ip, port).WaitAsync(ct);
-            await client.GetStream().WriteAsync(data, 0, data.Length, ct);
+            var stream = client.GetStream();
+            await stream.WriteAsync(data, 0, data.Length, ct);
+            await stream.FlushAsync(ct);
+            // Hold connection open so receiver can drain before TCP FIN arrives
+            await Task.Delay(1500, ct);
 
             _logger.LogInformation("TCP trigger sent to {Ip}:{Port} for order {OrderId}", ip, port, orderId);
         }
