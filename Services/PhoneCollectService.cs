@@ -81,6 +81,24 @@ namespace BakerScaleConnect.Services
         }
 
         /// <summary>
+        /// Send TCP trigger to show the Odoo customer-facing display in a WebView on the Aries 8.
+        /// Returns immediately — no callback expected, Odoo handles the display session.
+        /// </summary>
+        public async Task ShowCustomerDisplayAsync(string orderId, string displayUrl, CancellationToken ct)
+        {
+            var aries = _settings.Aries;
+
+            if (string.IsNullOrWhiteSpace(aries.TerminalIp))
+                throw new InvalidOperationException("Aries terminal IP not configured in settings.");
+
+            if (aries.PhonePort is < 1 or > 65535)
+                throw new InvalidOperationException($"Aries PhonePort {aries.PhonePort} is not a valid TCP port (1-65535).");
+
+            await SendCustomerDisplayTriggerAsync(orderId, displayUrl, aries.TerminalIp, aries.PhonePort, ct);
+            _logger.LogInformation("Customer display trigger sent — order={OrderId} url={Url}", orderId, displayUrl);
+        }
+
+        /// <summary>
         /// Called by PaxController when terminal POSTs back the phone result.
         /// </summary>
         public void ResolveResult(PhoneResult result)
@@ -97,6 +115,28 @@ namespace BakerScaleConnect.Services
             {
                 _logger.LogWarning("Received phone result for unknown/expired order {OrderId}", result.OrderId);
             }
+        }
+
+        private async Task SendCustomerDisplayTriggerAsync(string orderId, string displayUrl, string ip, int port, CancellationToken ct)
+        {
+            var trigger = new
+            {
+                action = "show_customer_display",
+                order_id = orderId,
+                display_url = displayUrl
+            };
+
+            string json = JsonSerializer.Serialize(trigger);
+            byte[] data = Encoding.UTF8.GetBytes(json + "\n");
+
+            using var client = new TcpClient();
+            await client.ConnectAsync(ip, port).WaitAsync(ct);
+            var stream = client.GetStream();
+            await stream.WriteAsync(data, 0, data.Length, ct);
+            await stream.FlushAsync(ct);
+            await Task.Delay(1500, ct);
+
+            _logger.LogInformation("Customer display TCP trigger sent to {Ip}:{Port} for order {OrderId}", ip, port, orderId);
         }
 
         private async Task SendTcpTriggerAsync(string orderId, string ip, int port, int callbackPort, CancellationToken ct)

@@ -302,6 +302,15 @@ namespace BakerScaleConnect.Controllers
 
             try
             {
+                // Customer display mode: send WebView trigger and return immediately.
+                // Odoo handles the display session; no callback expected.
+                if (!string.IsNullOrWhiteSpace(request.DisplayUrl))
+                {
+                    await phoneCollectService.ShowCustomerDisplayAsync(request.OrderId, request.DisplayUrl, cancellationToken);
+                    return Ok(new { order_id = request.OrderId, phone = "", skipped = true });
+                }
+
+                // Legacy mode: send collect_phone trigger, wait for callback from Android app.
                 var result = await phoneCollectService.RequestPhoneAsync(request.OrderId, cancellationToken);
                 return Ok(new
                 {
@@ -342,7 +351,8 @@ namespace BakerScaleConnect.Controllers
     }
 
     public record PhoneCollectRequest(
-        [property: System.Text.Json.Serialization.JsonPropertyName("order_id")] string OrderId);
+        [property: System.Text.Json.Serialization.JsonPropertyName("order_id")] string OrderId,
+        [property: System.Text.Json.Serialization.JsonPropertyName("display_url")] string? DisplayUrl);
 
     public record PhoneResultRequest(
         [property: System.Text.Json.Serialization.JsonPropertyName("order_id")] string OrderId,
