@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using BakerScaleConnect.Controllers.Models;
 using BakerScaleConnect.Services;
 using POSLinkAdmin.Util;
