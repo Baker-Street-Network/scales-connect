@@ -290,7 +290,6 @@ namespace BakerScaleConnect.Controllers
             Ok(new { status = "healthy", service = "pax", timestamp = DateTime.UtcNow });
 
         /// <summary>
-        /// <summary>
         /// Called by Odoo on first item scan. Sends TCP trigger to open the Odoo
         /// customer display in GeckoView on the Aries 8.
         /// </summary>
