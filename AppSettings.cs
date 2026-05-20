@@ -30,9 +30,11 @@ namespace BakerScaleConnect
         {
             public string TerminalIp { get; set; } = "";
             public int PhonePort { get; set; } = 9999;
-            public string CallbackIp { get; set; } = "";
-            public int CallbackPort { get; set; } = 5000;
-            public int TimeoutSeconds { get; set; } = 90;
+            /// <summary>
+            /// Optional origin prefix (scheme + host + port) that display_url must start with.
+            /// Example: "http://192.168.1.50:8069". Empty = scheme-only check (http/https).
+            /// </summary>
+            public string AllowedDisplayOrigin { get; set; } = "";
         }
 
         /// <summary>

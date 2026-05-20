@@ -26,7 +26,6 @@ namespace BakerScaleConnect.Controllers
         {
             try
             {
-                // Validate request
                 if (string.IsNullOrWhiteSpace(request.Amount))
                 {
                     return BadRequest(new PaxCreditResponse
@@ -47,12 +46,10 @@ namespace BakerScaleConnect.Controllers
                     });
                 }
 
-                //convert amount to decimal
                 var amount = decimal.Parse(request.Amount);
                 amount *= 100;
                 request.Amount = amount.ToString("F0");
 
-                // Process the payment with cancellation support
                 var response = await paxService.ProcessCreditPaymentAsync(request, cancellationToken);
 
                 if (response.Success)
@@ -112,7 +109,6 @@ namespace BakerScaleConnect.Controllers
         {
             try
             {
-                // Validate settings
                 if (string.IsNullOrWhiteSpace(settings.Ip))
                 {
                     return BadRequest(new { error = "IP address is required" });
@@ -198,7 +194,6 @@ namespace BakerScaleConnect.Controllers
         {
             try
             {
-                // Validate request
                 if (request.Items == null || request.Items.Count == 0)
                 {
                     return BadRequest(new PaxShowItemResponse
@@ -209,7 +204,6 @@ namespace BakerScaleConnect.Controllers
                     });
                 }
 
-                // Validate each item
                 foreach (var item in request.Items)
                 {
                     if (string.IsNullOrWhiteSpace(item.Name))
@@ -232,7 +226,6 @@ namespace BakerScaleConnect.Controllers
                         });
                     }
 
-                    // Convert price to cents format (multiply by 100)
                     if (decimal.TryParse(item.Price, out var price))
                     {
                         price *= 100;
@@ -249,7 +242,6 @@ namespace BakerScaleConnect.Controllers
                     }
                 }
 
-                // Show items on the terminal with cancellation support
                 var response = await paxService.ShowItemsAsync(request, cancellationToken);
 
                 if (response.Success)
@@ -290,8 +282,9 @@ namespace BakerScaleConnect.Controllers
             Ok(new { status = "healthy", service = "pax", timestamp = DateTime.UtcNow });
 
         /// <summary>
-        /// Trigger phone number collection on Aries 8 terminal.
-        /// Called by Odoo on first item scan. Sends TCP trigger and waits for result.
+        /// <summary>
+        /// Called by Odoo on first item scan. Sends TCP trigger to open the Odoo
+        /// customer display in GeckoView on the Aries 8.
         /// </summary>
         [HttpPost("phonecollect")]
         public async Task<ActionResult> PhoneCollect(
@@ -301,24 +294,13 @@ namespace BakerScaleConnect.Controllers
             if (string.IsNullOrWhiteSpace(request.OrderId))
                 return BadRequest(new { error = "order_id is required" });
 
+            if (string.IsNullOrWhiteSpace(request.DisplayUrl))
+                return BadRequest(new { error = "display_url is required" });
+
             try
             {
-                // Customer display mode: send WebView trigger and return immediately.
-                // Odoo handles the display session; no callback expected.
-                if (!string.IsNullOrWhiteSpace(request.DisplayUrl))
-                {
-                    await phoneCollectService.ShowCustomerDisplayAsync(request.OrderId, request.DisplayUrl, cancellationToken);
-                    return Ok(new { order_id = request.OrderId, phone = "", skipped = true });
-                }
-
-                // Legacy mode: send collect_phone trigger, wait for callback from Android app.
-                var result = await phoneCollectService.RequestPhoneAsync(request.OrderId, cancellationToken);
-                return Ok(new
-                {
-                    order_id = result.OrderId,
-                    phone = result.Phone,
-                    skipped = result.Skipped
-                });
+                await phoneCollectService.ShowCustomerDisplayAsync(request.OrderId, request.DisplayUrl, cancellationToken);
+                return Ok(new { order_id = request.OrderId });
             }
             catch (InvalidOperationException ex)
             {
@@ -330,33 +312,9 @@ namespace BakerScaleConnect.Controllers
                 return StatusCode(500, new { error = "An unexpected error occurred." });
             }
         }
-
-        /// <summary>
-        /// Receive phone result posted back from the Aries 8 terminal app.
-        /// </summary>
-        [HttpPost("phoneresult")]
-        public ActionResult PhoneResult([FromBody] PhoneResultRequest request)
-        {
-            if (string.IsNullOrWhiteSpace(request.OrderId))
-                return BadRequest(new { error = "order_id is required" });
-
-            phoneCollectService.ResolveResult(new Services.PhoneResult
-            {
-                OrderId = request.OrderId,
-                Phone = request.Phone ?? "",
-                Skipped = request.Skipped
-            });
-
-            return Ok(new { received = true });
-        }
     }
 
     public record PhoneCollectRequest(
         [property: System.Text.Json.Serialization.JsonPropertyName("order_id")] string OrderId,
         [property: System.Text.Json.Serialization.JsonPropertyName("display_url")] string? DisplayUrl);
-
-    public record PhoneResultRequest(
-        [property: System.Text.Json.Serialization.JsonPropertyName("order_id")] string OrderId,
-        [property: System.Text.Json.Serialization.JsonPropertyName("phone")] string? Phone,
-        [property: System.Text.Json.Serialization.JsonPropertyName("skipped")] bool Skipped);
 }
