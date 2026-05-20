@@ -26,6 +26,7 @@ namespace BakerScaleConnect.Controllers
         {
             try
             {
+                // Validate request
                 if (string.IsNullOrWhiteSpace(request.Amount))
                 {
                     return BadRequest(new PaxCreditResponse
@@ -46,10 +47,12 @@ namespace BakerScaleConnect.Controllers
                     });
                 }
 
+                //convert amount to decimal
                 var amount = decimal.Parse(request.Amount);
                 amount *= 100;
                 request.Amount = amount.ToString("F0");
 
+                // Process the payment with cancellation support
                 var response = await paxService.ProcessCreditPaymentAsync(request, cancellationToken);
 
                 if (response.Success)
@@ -109,6 +112,7 @@ namespace BakerScaleConnect.Controllers
         {
             try
             {
+                // Validate settings
                 if (string.IsNullOrWhiteSpace(settings.Ip))
                 {
                     return BadRequest(new { error = "IP address is required" });
@@ -194,6 +198,7 @@ namespace BakerScaleConnect.Controllers
         {
             try
             {
+                // Validate request
                 if (request.Items == null || request.Items.Count == 0)
                 {
                     return BadRequest(new PaxShowItemResponse
@@ -204,6 +209,7 @@ namespace BakerScaleConnect.Controllers
                     });
                 }
 
+                // Validate each item
                 foreach (var item in request.Items)
                 {
                     if (string.IsNullOrWhiteSpace(item.Name))
@@ -226,6 +232,7 @@ namespace BakerScaleConnect.Controllers
                         });
                     }
 
+                    // Convert price to cents format (multiply by 100)
                     if (decimal.TryParse(item.Price, out var price))
                     {
                         price *= 100;
@@ -242,6 +249,7 @@ namespace BakerScaleConnect.Controllers
                     }
                 }
 
+                // Show items on the terminal with cancellation support
                 var response = await paxService.ShowItemsAsync(request, cancellationToken);
 
                 if (response.Success)
