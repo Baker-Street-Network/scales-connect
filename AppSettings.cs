@@ -15,6 +15,7 @@ namespace BakerScaleConnect
         );
 
         public PaxTerminalConfig PaxTerminal { get; set; } = new();
+        public AriesConfig Aries { get; set; } = new();
 
         public class PaxTerminalConfig
         {
@@ -23,6 +24,17 @@ namespace BakerScaleConnect
             public int Port { get; set; } = 10009;
             public int Timeout { get; set; } = 60000;
             public string SerialPort { get; set; } = "";
+        }
+
+        public class AriesConfig
+        {
+            public string TerminalIp { get; set; } = "";
+            public int PhonePort { get; set; } = 9999;
+            /// <summary>
+            /// Optional origin prefix (scheme + host + port) that display_url must start with.
+            /// Example: "http://192.168.1.50:8069". Empty = scheme-only check (http/https).
+            /// </summary>
+            public string AllowedDisplayOrigin { get; set; } = "";
         }
 
         /// <summary>
