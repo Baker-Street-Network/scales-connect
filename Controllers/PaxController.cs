@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using BakerScaleConnect.Controllers.Models;
 using BakerScaleConnect.Services;
 using POSLinkAdmin.Util;
@@ -10,7 +11,7 @@ namespace BakerScaleConnect.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class PaxController(PaxService paxService) : ControllerBase
+    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService, ILogger<PaxController> logger) : ControllerBase
     {
         /// <summary>
         /// Process a credit card payment transaction.
@@ -287,5 +288,40 @@ namespace BakerScaleConnect.Controllers
         [HttpGet("health")]
         public ActionResult GetHealth() =>
             Ok(new { status = "healthy", service = "pax", timestamp = DateTime.UtcNow });
+
+        /// <summary>
+        /// Called by Odoo on first item scan. Sends TCP trigger to open the Odoo
+        /// customer display in GeckoView on the Aries 8.
+        /// </summary>
+        [HttpPost("phonecollect")]
+        public async Task<ActionResult> PhoneCollect(
+            [FromBody] PhoneCollectRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (string.IsNullOrWhiteSpace(request.OrderId))
+                return BadRequest(new { error = "order_id is required" });
+
+            if (string.IsNullOrWhiteSpace(request.DisplayUrl))
+                return BadRequest(new { error = "display_url is required" });
+
+            try
+            {
+                await phoneCollectService.ShowCustomerDisplayAsync(request.OrderId, request.DisplayUrl, cancellationToken);
+                return Ok(new { order_id = request.OrderId });
+            }
+            catch (InvalidOperationException ex)
+            {
+                return StatusCode(503, new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Unhandled error in PhoneCollect for order {OrderId}", request.OrderId);
+                return StatusCode(500, new { error = "An unexpected error occurred." });
+            }
+        }
     }
+
+    public record PhoneCollectRequest(
+        [property: System.Text.Json.Serialization.JsonPropertyName("order_id")] string OrderId,
+        [property: System.Text.Json.Serialization.JsonPropertyName("display_url")] string? DisplayUrl);
 }
