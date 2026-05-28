@@ -55,6 +55,9 @@ namespace BakerScaleConnect
                         sp.GetRequiredService<ILogger<PhoneCollectService>>(),
                         AppSettings.Load()));
 
+                    // Register AppSettings as singleton so controllers can access it
+                    services.AddSingleton(AppSettings.Load());
+
                     // Add logging
                     services.AddLogging(builder =>
                     {

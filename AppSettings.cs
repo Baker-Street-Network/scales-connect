@@ -16,6 +16,7 @@ namespace BakerScaleConnect
 
         public PaxTerminalConfig PaxTerminal { get; set; } = new();
         public AriesConfig Aries { get; set; } = new();
+        public CashDrawerConfig CashDrawer { get; set; } = new();
 
         public class PaxTerminalConfig
         {
@@ -35,6 +36,11 @@ namespace BakerScaleConnect
             /// Example: "http://192.168.1.50:8069". Empty = scheme-only check (http/https).
             /// </summary>
             public string AllowedDisplayOrigin { get; set; } = "";
+        }
+
+        public class CashDrawerConfig
+        {
+            public string SerialPort { get; set; } = "";
         }
 
         /// <summary>

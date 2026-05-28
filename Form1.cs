@@ -24,13 +24,14 @@ namespace BakerScaleConnect
             _scannerManager = host.Services.GetRequiredService<ScannerManager>();
             _paxService = host.Services.GetRequiredService<PaxService>();
 
-            // Load settings
-            _settings = AppSettings.Load();
+            // Use the shared AppSettings singleton from DI
+            _settings = host.Services.GetRequiredService<AppSettings>();
 
             SetupSystemTray();
             SetupForm();
             WireButtonEvents();
             LoadPaxSettings();
+            LoadCashDrawerSettings();
 
             // Discover scanners immediately on startup
             this.Load += Form1_Load;
@@ -50,6 +51,10 @@ namespace BakerScaleConnect
             portNumber.TextChanged += PaxSettings_Changed;
             timeoutTextBox.TextChanged += PaxSettings_Changed;
             serialPortComboBox.SelectedIndexChanged += PaxSettings_Changed;
+
+            // Cash drawer events
+            cashDrawerPortComboBox.SelectedIndexChanged += CashDrawerSettings_Changed;
+            btnReloadCashDrawerPorts.Click += (s, e) => PopulateCashDrawerPorts();
         }
 
         private void Form1_Load(object? sender, EventArgs e)
@@ -908,6 +913,83 @@ namespace BakerScaleConnect
         private void button5_Click(object sender, EventArgs e)
         {
             BtnTestConnection_Click(sender, e);
+        }
+
+        #region Cash Drawer Methods
+
+        private void LoadCashDrawerSettings()
+        {
+            PopulateCashDrawerPorts(_settings.CashDrawer.SerialPort);
+        }
+
+        private void PopulateCashDrawerPorts(string? savedSelection = null)
+        {
+            string currentSelection = savedSelection ?? cashDrawerPortComboBox.Text;
+            cashDrawerPortComboBox.Items.Clear();
+
+            try
+            {
+                string[] ports = System.IO.Ports.SerialPort.GetPortNames();
+                if (ports.Length > 0)
+                {
+                    foreach (string port in ports)
+                        cashDrawerPortComboBox.Items.Add(port);
+
+                    if (!string.IsNullOrEmpty(currentSelection) && cashDrawerPortComboBox.Items.Contains(currentSelection))
+                        cashDrawerPortComboBox.Text = currentSelection;
+                    else if (cashDrawerPortComboBox.Items.Count > 0)
+                        cashDrawerPortComboBox.SelectedIndex = 0;
+                }
+                else
+                {
+                    cashDrawerPortComboBox.Items.Add("No ports found");
+                }
+            }
+            catch
+            {
+                cashDrawerPortComboBox.Items.Add("Error loading ports");
+            }
+        }
+
+        private void CashDrawerSettings_Changed(object? sender, EventArgs e)
+        {
+            SaveCashDrawerSettings();
+        }
+
+        private void SaveCashDrawerSettings()
+        {
+            try
+            {
+                string selected = cashDrawerPortComboBox.Text;
+                if (selected == "No ports found" || selected == "Error loading ports")
+                    return;
+
+                _settings.CashDrawer.SerialPort = selected;
+                _settings.Save();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error saving cash drawer settings: {ex.Message}");
+            }
+        }
+
+        #endregion
+
+        private void kickDrawerButton_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                // ESC/POS command to kick cash drawer (pin 2)
+                byte[] kickCommand = [0x1B, 0x70, 0x00, 0x19, 0xFA];
+
+                using SerialPort port = new("COM1", 9600);
+                port.Open();
+                port.Write(kickCommand, 0, kickCommand.Length);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to kick drawer: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
         }
     }
 }
