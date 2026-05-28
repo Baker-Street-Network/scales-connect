@@ -61,10 +61,10 @@
             Webserver = new GroupBox();
             textBox1 = new TextBox();
             groupBoxCashDrawer = new GroupBox();
+            kickDrawerButton = new Button();
             labelCashDrawerPort = new Label();
             cashDrawerPortComboBox = new ComboBox();
             btnReloadCashDrawerPorts = new Button();
-            kickDrawerButton = new Button();
             groupBox1.SuspendLayout();
             groupBox2.SuspendLayout();
             tabControl1.SuspendLayout();
@@ -78,7 +78,7 @@
             // 
             label1.AutoSize = true;
             label1.Font = new Font("Segoe UI", 14F);
-            label1.Location = new Point(100, 14);
+            label1.Location = new Point(158, 16);
             label1.Margin = new Padding(2, 0, 2, 0);
             label1.Name = "label1";
             label1.Size = new Size(188, 25);
@@ -88,7 +88,7 @@
             // label2
             // 
             label2.AutoSize = true;
-            label2.Location = new Point(66, 44);
+            label2.Location = new Point(124, 46);
             label2.Margin = new Padding(2, 0, 2, 0);
             label2.Name = "label2";
             label2.Size = new Size(246, 15);
@@ -98,7 +98,7 @@
             // label3
             // 
             label3.AutoSize = true;
-            label3.Location = new Point(106, 59);
+            label3.Location = new Point(164, 61);
             label3.Margin = new Padding(2, 0, 2, 0);
             label3.Name = "label3";
             label3.Size = new Size(169, 15);
@@ -353,10 +353,10 @@
             // 
             // button5
             // 
-            button5.Location = new Point(97, 47);
+            button5.Location = new Point(104, 52);
             button5.Margin = new Padding(2);
             button5.Name = "button5";
-            button5.Size = new Size(119, 20);
+            button5.Size = new Size(119, 26);
             button5.TabIndex = 8;
             button5.Text = "Test Connection";
             button5.UseVisualStyleBackColor = true;
@@ -364,10 +364,10 @@
             // 
             // button3
             // 
-            button3.Location = new Point(4, 47);
+            button3.Location = new Point(4, 53);
             button3.Margin = new Padding(2);
             button3.Name = "button3";
-            button3.Size = new Size(90, 20);
+            button3.Size = new Size(96, 26);
             button3.TabIndex = 2;
             button3.Text = "Reload";
             button3.UseVisualStyleBackColor = true;
@@ -389,7 +389,7 @@
             serialPortComboBox.Location = new Point(4, 25);
             serialPortComboBox.Margin = new Padding(2);
             serialPortComboBox.Name = "serialPortComboBox";
-            serialPortComboBox.Size = new Size(125, 23);
+            serialPortComboBox.Size = new Size(181, 23);
             serialPortComboBox.TabIndex = 0;
             // 
             // btnTestTransaction
@@ -440,6 +440,17 @@
             groupBoxCashDrawer.TabStop = false;
             groupBoxCashDrawer.Text = "Cash Drawer";
             // 
+            // kickDrawerButton
+            // 
+            kickDrawerButton.Location = new Point(281, 22);
+            kickDrawerButton.Margin = new Padding(2);
+            kickDrawerButton.Name = "kickDrawerButton";
+            kickDrawerButton.Size = new Size(98, 23);
+            kickDrawerButton.TabIndex = 3;
+            kickDrawerButton.Text = "Kick Drawer";
+            kickDrawerButton.UseVisualStyleBackColor = true;
+            kickDrawerButton.Click += kickDrawerButton_Click;
+            // 
             // labelCashDrawerPort
             // 
             labelCashDrawerPort.AutoSize = true;
@@ -468,17 +479,6 @@
             btnReloadCashDrawerPorts.TabIndex = 2;
             btnReloadCashDrawerPorts.Text = "Reload";
             btnReloadCashDrawerPorts.UseVisualStyleBackColor = true;
-            // 
-            // kickDrawerButton
-            // 
-            kickDrawerButton.Location = new Point(281, 22);
-            kickDrawerButton.Margin = new Padding(2);
-            kickDrawerButton.Name = "kickDrawerButton";
-            kickDrawerButton.Size = new Size(98, 23);
-            kickDrawerButton.TabIndex = 3;
-            kickDrawerButton.Text = "Kick Drawer";
-            kickDrawerButton.UseVisualStyleBackColor = true;
-            kickDrawerButton.Click += kickDrawerButton_Click;
             // 
             // Form1
             // 
