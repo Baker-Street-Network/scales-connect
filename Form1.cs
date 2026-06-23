@@ -558,6 +558,11 @@ namespace BakerScaleConnect
                 _settings.PaxTerminal.IpAddress = terminalIp.Text;
                 _settings.PaxTerminal.SerialPort = serialPortComboBox.Text;
 
+                // Mirror the PAX terminal IP into the Aries config so the Aries 8
+                // (customer display + callback) talks to the same device by default.
+                _settings.Aries.TerminalIp = terminalIp.Text;
+                _settings.Aries.CallbackIp = terminalIp.Text;
+
                 if (int.TryParse(portNumber.Text, out int port))
                 {
                     _settings.PaxTerminal.Port = port;
