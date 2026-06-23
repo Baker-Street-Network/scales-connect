@@ -560,8 +560,14 @@ namespace BakerScaleConnect
 
                 // Mirror the PAX terminal IP into the Aries config so the Aries 8
                 // (customer display + callback) talks to the same device by default.
-                _settings.Aries.TerminalIp = terminalIp.Text;
-                _settings.Aries.CallbackIp = terminalIp.Text;
+                // Only when TCP is selected and the IP is non-blank — otherwise we'd
+                // clobber a previously-configured Aries IP with an empty/USB value
+                // and break PhoneCollectService.
+                if (connectionMethodComboBox.Text == "TCP" && !string.IsNullOrWhiteSpace(terminalIp.Text))
+                {
+                    _settings.Aries.TerminalIp = terminalIp.Text;
+                    _settings.Aries.CallbackIp = terminalIp.Text;
+                }
 
                 if (int.TryParse(portNumber.Text, out int port))
                 {
