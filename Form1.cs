@@ -1006,10 +1006,18 @@ namespace BakerScaleConnect
         {
             try
             {
+                string portName = _settings.CashDrawer.SerialPort;
+
+                if (string.IsNullOrWhiteSpace(portName))
+                {
+                    MessageBox.Show("No cash drawer serial port configured.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    return;
+                }
+
                 // ESC/POS command to kick cash drawer (pin 2)
                 byte[] kickCommand = [0x1B, 0x70, 0x00, 0x19, 0xFA];
 
-                using SerialPort port = new("COM1", 9600);
+                using SerialPort port = new(portName, 9600);
                 port.Open();
                 port.Write(kickCommand, 0, kickCommand.Length);
             }
