@@ -20,7 +20,7 @@ namespace BakerScaleConnect.Services
         /// Send TCP trigger to Aries 8 to open the Odoo customer display in GeckoView.
         /// Returns once the trigger is sent — Odoo handles the display session.
         /// </summary>
-        public async Task ShowCustomerDisplayAsync(string orderId, string displayUrl, CancellationToken ct)
+        public async Task ShowCustomerDisplayAsync(string orderId, string displayUrl, string? logoUrl, string? logoVersion, CancellationToken ct)
         {
             var aries = _settings.Aries;
 
@@ -30,17 +30,19 @@ namespace BakerScaleConnect.Services
             if (aries.PhonePort is < 1 or > 65535)
                 throw new InvalidOperationException($"Aries PhonePort {aries.PhonePort} is not a valid TCP port (1-65535).");
 
-            await SendCustomerDisplayTriggerAsync(orderId, displayUrl, aries.TerminalIp, aries.PhonePort, ct);
+            await SendCustomerDisplayTriggerAsync(orderId, displayUrl, logoUrl, logoVersion, aries.TerminalIp, aries.PhonePort, ct);
             _logger.LogInformation("Customer display trigger sent — order={OrderId}", orderId);
         }
 
-        private async Task SendCustomerDisplayTriggerAsync(string orderId, string displayUrl, string ip, int port, CancellationToken ct)
+        private async Task SendCustomerDisplayTriggerAsync(string orderId, string displayUrl, string? logoUrl, string? logoVersion, string ip, int port, CancellationToken ct)
         {
             var trigger = new
             {
                 action = "show_customer_display",
                 order_id = orderId,
-                display_url = displayUrl
+                display_url = displayUrl,
+                logo_url = logoUrl,
+                logo_version = logoVersion
             };
 
             string json = JsonSerializer.Serialize(trigger);
