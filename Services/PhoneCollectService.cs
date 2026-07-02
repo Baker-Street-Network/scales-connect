@@ -1,12 +1,16 @@
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.Logging;
 
 namespace BakerScaleConnect.Services
 {
     public class PhoneCollectService
     {
+        private static readonly JsonSerializerOptions TriggerJsonOptions =
+            new() { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
+
         private readonly ILogger<PhoneCollectService> _logger;
         private readonly AppSettings _settings;
 
@@ -45,7 +49,7 @@ namespace BakerScaleConnect.Services
                 logo_version = logoVersion
             };
 
-            string json = JsonSerializer.Serialize(trigger);
+            string json = JsonSerializer.Serialize(trigger, TriggerJsonOptions);
             byte[] data = Encoding.UTF8.GetBytes(json + "\n");
 
             using var client = new TcpClient();

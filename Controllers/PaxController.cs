@@ -11,7 +11,7 @@ namespace BakerScaleConnect.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService, ILogger<PaxController> logger) : ControllerBase
+    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService, AppSettings settings, ILogger<PaxController> logger) : ControllerBase
     {
         /// <summary>
         /// Process a credit card payment transaction.
@@ -301,8 +301,19 @@ namespace BakerScaleConnect.Controllers
             if (string.IsNullOrWhiteSpace(request.DisplayUrl))
                 return BadRequest(new { error = "display_url is required" });
 
-            if (request.LogoUrl != null && !Uri.TryCreate(request.LogoUrl, UriKind.Absolute, out _))
-                return BadRequest(new { error = "logo_url must be a valid absolute URL" });
+            if (!Uri.TryCreate(request.DisplayUrl, UriKind.Absolute, out var displayUri) ||
+                (displayUri.Scheme != Uri.UriSchemeHttp && displayUri.Scheme != Uri.UriSchemeHttps))
+                return BadRequest(new { error = "display_url must be an absolute http or https URL" });
+
+            var callbackPrefix = settings.Aries.CallbackIp;
+            if (!string.IsNullOrWhiteSpace(callbackPrefix) &&
+                !request.DisplayUrl.StartsWith(callbackPrefix, StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = $"display_url must start with {callbackPrefix}" });
+
+            if (request.LogoUrl != null &&
+                (!Uri.TryCreate(request.LogoUrl, UriKind.Absolute, out var logoUri) ||
+                 (logoUri.Scheme != Uri.UriSchemeHttp && logoUri.Scheme != Uri.UriSchemeHttps)))
+                return BadRequest(new { error = "logo_url must be an absolute http or https URL" });
 
             if (request.LogoVersion != null && !Sha1Hex.IsMatch(request.LogoVersion))
                 return BadRequest(new { error = "logo_version must be a 40-character hex SHA1" });
