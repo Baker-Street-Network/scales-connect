@@ -16,6 +16,7 @@ namespace BakerScaleConnect
         private int _retryCount;
         private const int RETRY_INTERVAL_MS = 5000; // 5 seconds between retries
         private AppSettings _settings;
+        private bool _isLoadingPaxSettings;
 
         public Form1(IHost host)
         {
@@ -416,26 +417,37 @@ namespace BakerScaleConnect
         /// </summary>
         private void LoadPaxSettings()
         {
-            System.Diagnostics.Debug.WriteLine($"LoadPaxSettings: Loading settings...");
-            System.Diagnostics.Debug.WriteLine($"  ConnectionMethod: {_settings.PaxTerminal.ConnectionMethod}");
-            System.Diagnostics.Debug.WriteLine($"  IpAddress: {_settings.PaxTerminal.IpAddress}");
-            System.Diagnostics.Debug.WriteLine($"  Port: {_settings.PaxTerminal.Port}");
-            System.Diagnostics.Debug.WriteLine($"  Timeout: {_settings.PaxTerminal.Timeout}");
-            System.Diagnostics.Debug.WriteLine($"  SerialPort: '{_settings.PaxTerminal.SerialPort}'");
+            // Suppress auto-save while we populate controls from disk — otherwise
+            // assigning each .Text fires TextChanged/SelectedIndexChanged and
+            // SavePaxSettings() would clobber _settings with the still-default UI values.
+            _isLoadingPaxSettings = true;
+            try
+            {
+                System.Diagnostics.Debug.WriteLine($"LoadPaxSettings: Loading settings...");
+                System.Diagnostics.Debug.WriteLine($"  ConnectionMethod: {_settings.PaxTerminal.ConnectionMethod}");
+                System.Diagnostics.Debug.WriteLine($"  IpAddress: {_settings.PaxTerminal.IpAddress}");
+                System.Diagnostics.Debug.WriteLine($"  Port: {_settings.PaxTerminal.Port}");
+                System.Diagnostics.Debug.WriteLine($"  Timeout: {_settings.PaxTerminal.Timeout}");
+                System.Diagnostics.Debug.WriteLine($"  SerialPort: '{_settings.PaxTerminal.SerialPort}'");
 
-            connectionMethodComboBox.Text = _settings.PaxTerminal.ConnectionMethod;
-            terminalIp.Text = _settings.PaxTerminal.IpAddress;
-            portNumber.Text = _settings.PaxTerminal.Port.ToString();
-            timeoutTextBox.Text = _settings.PaxTerminal.Timeout.ToString();
+                connectionMethodComboBox.Text = _settings.PaxTerminal.ConnectionMethod;
+                terminalIp.Text = _settings.PaxTerminal.IpAddress;
+                portNumber.Text = _settings.PaxTerminal.Port.ToString();
+                timeoutTextBox.Text = _settings.PaxTerminal.Timeout.ToString();
 
-            // Populate serial ports with saved selection
-            PopulateSerialPorts(_settings.PaxTerminal.SerialPort);
+                // Populate serial ports with saved selection
+                PopulateSerialPorts(_settings.PaxTerminal.SerialPort);
 
-            // Show appropriate tab based on connection method
-            UpdateTabVisibility();
+                // Show appropriate tab based on connection method
+                UpdateTabVisibility();
 
-            // Update the PaxService with loaded settings
-            UpdatePaxService();
+                // Update the PaxService with loaded settings
+                UpdatePaxService();
+            }
+            finally
+            {
+                _isLoadingPaxSettings = false;
+            }
         }
 
         /// <summary>
@@ -490,6 +502,8 @@ namespace BakerScaleConnect
         /// </summary>
         private void ConnectionMethod_Changed(object? sender, EventArgs e)
         {
+            if (_isLoadingPaxSettings) return;
+
             UpdateTabVisibility();
             SavePaxSettings();
 
@@ -528,6 +542,8 @@ namespace BakerScaleConnect
         /// </summary>
         private void PaxSettings_Changed(object? sender, EventArgs e)
         {
+            if (_isLoadingPaxSettings) return;
+
             SavePaxSettings();
         }
 
@@ -541,6 +557,17 @@ namespace BakerScaleConnect
                 _settings.PaxTerminal.ConnectionMethod = connectionMethodComboBox.Text;
                 _settings.PaxTerminal.IpAddress = terminalIp.Text;
                 _settings.PaxTerminal.SerialPort = serialPortComboBox.Text;
+
+                // Mirror the PAX terminal IP into the Aries config so the Aries 8
+                // (customer display + callback) talks to the same device by default.
+                // Only when TCP is selected and the IP is non-blank — otherwise we'd
+                // clobber a previously-configured Aries IP with an empty/USB value
+                // and break PhoneCollectService.
+                if (connectionMethodComboBox.Text == "TCP" && !string.IsNullOrWhiteSpace(terminalIp.Text))
+                {
+                    _settings.Aries.TerminalIp = terminalIp.Text;
+                    _settings.Aries.CallbackIp = terminalIp.Text;
+                }
 
                 if (int.TryParse(portNumber.Text, out int port))
                 {

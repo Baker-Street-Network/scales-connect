@@ -11,7 +11,7 @@ namespace BakerScaleConnect.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService, ILogger<PaxController> logger) : ControllerBase
+    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService, AppSettings appSettings, ILogger<PaxController> logger) : ControllerBase
     {
         /// <summary>
         /// Process a credit card payment transaction.
@@ -298,15 +298,31 @@ namespace BakerScaleConnect.Controllers
             [FromBody] PhoneCollectRequest request,
             CancellationToken cancellationToken)
         {
-            if (string.IsNullOrWhiteSpace(request.OrderId))
-                return BadRequest(new { error = "order_id is required" });
-
             if (string.IsNullOrWhiteSpace(request.DisplayUrl))
                 return BadRequest(new { error = "display_url is required" });
 
+            if (!IsAbsoluteHttpUrl(request.DisplayUrl))
+                return BadRequest(new { error = "display_url must be an absolute http or https URL" });
+
+            var callbackPrefix = appSettings.Aries.CallbackIp;
+            if (!string.IsNullOrWhiteSpace(callbackPrefix) &&
+                !request.DisplayUrl.StartsWith(callbackPrefix, StringComparison.OrdinalIgnoreCase))
+                return BadRequest(new { error = $"display_url must start with {callbackPrefix}" });
+
+            if (request.LogoUrl != null && !IsAbsoluteHttpUrl(request.LogoUrl))
+                return BadRequest(new { error = "logo_url must be an absolute http or https URL" });
+
+            if (request.LogoVersion != null && !Sha1Hex.IsMatch(request.LogoVersion))
+                return BadRequest(new { error = "logo_version must be a 40-character hex SHA1" });
+
             try
             {
-                await phoneCollectService.ShowCustomerDisplayAsync(request.OrderId, request.DisplayUrl, cancellationToken);
+                await phoneCollectService.ShowCustomerDisplayAsync(
+                    request.OrderId,
+                    request.DisplayUrl,
+                    request.LogoUrl,
+                    request.LogoVersion,
+                    cancellationToken);
                 return Ok(new { order_id = request.OrderId });
             }
             catch (InvalidOperationException ex)
@@ -319,9 +335,18 @@ namespace BakerScaleConnect.Controllers
                 return StatusCode(500, new { error = "An unexpected error occurred." });
             }
         }
+
+        private static readonly System.Text.RegularExpressions.Regex Sha1Hex =
+            new("^[0-9a-fA-F]{40}$", System.Text.RegularExpressions.RegexOptions.Compiled);
+
+        private static bool IsAbsoluteHttpUrl(string value) =>
+            Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+            (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
     }
 
     public record PhoneCollectRequest(
         [property: System.Text.Json.Serialization.JsonPropertyName("order_id")] string OrderId,
-        [property: System.Text.Json.Serialization.JsonPropertyName("display_url")] string? DisplayUrl);
+        [property: System.Text.Json.Serialization.JsonPropertyName("display_url")] string? DisplayUrl,
+        [property: System.Text.Json.Serialization.JsonPropertyName("logo_url")] string? LogoUrl = null,
+        [property: System.Text.Json.Serialization.JsonPropertyName("logo_version")] string? LogoVersion = null);
 }
