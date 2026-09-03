@@ -186,11 +186,11 @@
             // 
             // label4
             // 
-            label4.AutoSize = true;
-            label4.Location = new Point(4, 24);
-            label4.Margin = new Padding(2, 0, 2, 0);
+            label4.Dock = DockStyle.Fill;
+            label4.Location = new Point(2, 18);
             label4.Name = "label4";
-            label4.Size = new Size(142, 15);
+            label4.Padding = new Padding(0, 6, 0, 0);
+            label4.Size = new Size(298, 105);
             label4.TabIndex = 0;
             label4.Text = "🔍 Discovering scanners...";
             // 

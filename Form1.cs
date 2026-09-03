@@ -1002,29 +1002,43 @@ namespace BakerScaleConnect
 
         #endregion
 
-        private void kickDrawerButton_Click(object sender, EventArgs e)
+        private async void kickDrawerButton_Click(object sender, EventArgs e)
         {
+            string portName = _settings.CashDrawer.SerialPort;
+
+            if (string.IsNullOrWhiteSpace(portName))
+            {
+                MessageBox.Show("No cash drawer serial port configured.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            kickDrawerButton.Enabled = false;
+
             try
             {
-                string portName = _settings.CashDrawer.SerialPort;
-
-                if (string.IsNullOrWhiteSpace(portName))
-                {
-                    MessageBox.Show("No cash drawer serial port configured.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                    return;
-                }
-
-                // ESC/POS command to kick cash drawer (pin 2)
-                byte[] kickCommand = [0x1B, 0x70, 0x00, 0x19, 0xFA];
-
-                using SerialPort port = new(portName, 9600);
-                port.Open();
-                port.Write(kickCommand, 0, kickCommand.Length);
+                await Task.Run(() => SendDrawerKick(portName)).WaitAsync(TimeSpan.FromSeconds(5));
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Failed to kick drawer: {ex.Message}", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+            finally
+            {
+                kickDrawerButton.Enabled = true;
+            }
+        }
+
+        private static void SendDrawerKick(string portName)
+        {
+            byte[] kickCommand = [0x1B, 0x70, 0x00, 0x19, 0xFA];
+
+            using SerialPort port = new(portName, 9600)
+            {
+                WriteTimeout = 1000,
+                ReadTimeout = 1000
+            };
+            port.Open();
+            port.Write(kickCommand, 0, kickCommand.Length);
         }
     }
 }
