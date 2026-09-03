@@ -28,9 +28,12 @@
         /// </summary>
         private void InitializeComponent()
         {
+            System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(Form1));
             label1 = new Label();
             label2 = new Label();
             label3 = new Label();
+            labelUpdateStatus = new Label();
+            labelVersion = new Label();
             groupBox1 = new GroupBox();
             labelVolume = new Label();
             comboVolume = new ComboBox();
@@ -95,6 +98,18 @@
             label2.TabIndex = 1;
             label2.Text = "This helper connects the Odoo PoS system to";
             // 
+            // labelUpdateStatus
+            // 
+            labelUpdateStatus.AutoSize = true;
+            labelUpdateStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
+            labelUpdateStatus.ForeColor = SystemColors.GrayText;
+            labelUpdateStatus.Location = new Point(9, 455);
+            labelUpdateStatus.Margin = new Padding(2, 0, 2, 0);
+            labelUpdateStatus.Name = "labelUpdateStatus";
+            labelUpdateStatus.Size = new Size(120, 15);
+            labelUpdateStatus.TabIndex = 8;
+            labelUpdateStatus.Text = "Update check pending";
+            // 
             // label3
             // 
             label3.AutoSize = true;
@@ -104,6 +119,18 @@
             label3.Size = new Size(169, 15);
             label3.TabIndex = 2;
             label3.Text = "locally connected USB devices.";
+            // 
+            // labelVersion
+            // 
+            labelVersion.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            labelVersion.AutoSize = true;
+            labelVersion.ForeColor = SystemColors.GrayText;
+            labelVersion.Location = new Point(400, 20);
+            labelVersion.Margin = new Padding(2, 0, 2, 0);
+            labelVersion.Name = "labelVersion";
+            labelVersion.Size = new Size(37, 15);
+            labelVersion.TabIndex = 3;
+            labelVersion.Text = "v0.0.0";
             // 
             // groupBox1
             // 
@@ -484,14 +511,18 @@
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(479, 454);
+            ClientSize = new Size(479, 478);
             Controls.Add(groupBoxCashDrawer);
             Controls.Add(Webserver);
             Controls.Add(groupBox2);
             Controls.Add(groupBox1);
+            Controls.Add(labelVersion);
+            Controls.Add(labelUpdateStatus);
             Controls.Add(label3);
             Controls.Add(label2);
             Controls.Add(label1);
+            Icon = (Icon)resources.GetObject("$this.Icon");
+            FormBorderStyle = FormBorderStyle.FixedSingle;
             Margin = new Padding(2);
             MaximizeBox = false;
             Name = "Form1";
@@ -518,6 +549,8 @@
         private Label label1;
         private Label label2;
         private Label label3;
+        private Label labelVersion;
+        private Label labelUpdateStatus;
         private GroupBox groupBox1;
         private Label label4;
         private Label label5;

@@ -18,6 +18,11 @@ namespace BakerScaleConnect
             // Velopack: Handle installation/uninstallation events
             VelopackApp.Build().Run();
 
+            // Exactly one copy may run per machine — the Run key, the watchdog service
+            // and Velopack's restart each launch us independently. See SingleInstance.
+            if (!SingleInstance.TryAcquire())
+                return;
+
             AddToStartup();
 
             ApplicationConfiguration.Initialize();
@@ -35,8 +40,11 @@ namespace BakerScaleConnect
                     // Monitor the watchdog service and restart it if it stops
                     services.AddHostedService<WatchdogMonitorService>();
 
-                    // Self-updater: checks GitHub Releases and applies updates automatically
-                    services.AddHostedService<UpdateService>();
+                    // Self-updater: checks GitHub Releases and applies updates automatically.
+                    // Registered as a singleton as well so the form can show its status —
+                    // AddHostedService<T> alone only registers it as an IHostedService.
+                    services.AddSingleton<UpdateService>();
+                    services.AddHostedService(sp => sp.GetRequiredService<UpdateService>());
 
                     // Register scanner manager as singleton
                     services.AddSingleton<ScannerManager>();
@@ -74,6 +82,18 @@ namespace BakerScaleConnect
             using (var serviceScope = host.Services.CreateScope())
             {
                 var form = new Form1(host);
+
+                // A hosted service that fails fatally — the web server not being able
+                // to bind port 5000, say — stops the host. Take the UI down with it: a
+                // copy left running without its web server is a zombie, hidden in the
+                // tray, holding the scanner and serial handles, and serving nothing.
+                host.Services.GetRequiredService<IHostApplicationLifetime>()
+                    .ApplicationStopped.Register(form.ShutdownFromHost);
+
+                // A duplicate launch signals us on its way out. Surface the window so
+                // the user sees the running copy instead of nothing happening at all.
+                SingleInstance.ListenForShowRequests(form.ShowFromSecondInstance);
+
                 Application.Run(form);
             }
 

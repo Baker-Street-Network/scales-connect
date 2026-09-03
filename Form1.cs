@@ -2,21 +2,29 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using BakerScaleConnect.Services;
 using System.IO.Ports;
+using System.Reflection;
+using System.Drawing.Drawing2D;
+using System.Runtime.InteropServices;
 
 namespace BakerScaleConnect
 {
     public partial class Form1 : Form
     {
         private NotifyIcon? _notifyIcon;
+        private Icon? _trayIcon;
+        private IntPtr _trayIconHandle;
         private ContextMenuStrip? _contextMenu;
         private readonly IHost _host;
         private readonly ScannerManager _scannerManager;
         private readonly PaxService _paxService;
+        private readonly UpdateService _updateService;
+        private System.Windows.Forms.Timer? _updateStatusTimer;
         private System.Windows.Forms.Timer? _retryTimer;
         private int _retryCount;
         private const int RETRY_INTERVAL_MS = 5000; // 5 seconds between retries
         private AppSettings _settings;
         private bool _isLoadingPaxSettings;
+        private bool _isExiting;
 
         public Form1(IHost host)
         {
@@ -28,8 +36,11 @@ namespace BakerScaleConnect
             // Use the shared AppSettings singleton from DI
             _settings = host.Services.GetRequiredService<AppSettings>();
 
+            _updateService = host.Services.GetRequiredService<UpdateService>();
+
             SetupSystemTray();
             SetupForm();
+            SetupUpdateStatus();
             WireButtonEvents();
             LoadPaxSettings();
             LoadCashDrawerSettings();
@@ -326,6 +337,111 @@ namespace BakerScaleConnect
             // Handle form closing to minimize to tray instead
             this.FormClosing += Form1_FormClosing;
             this.Resize += Form1_Resize;
+
+            ShowVersion();
+        }
+
+        /// <summary>
+        /// Stamps the running version in the top-right of the window. Support needs to
+        /// be able to read it off a customer's screen without digging through folders.
+        /// </summary>
+        private void ShowVersion()
+        {
+            labelVersion.Text = $"v{GetDisplayVersion()}";
+
+            // AutoSize means the width isn't known until the text is set, so pin the
+            // label to the right edge here rather than at a fixed design-time point.
+            labelVersion.Left = this.ClientSize.Width - labelVersion.Width - 10;
+
+            _notifyIcon!.Text = $"Baker Scale Connect v{GetDisplayVersion()}";
+        }
+
+        /// <summary>
+        /// Shows what the auto-updater is doing and when it next runs. The service
+        /// raises an event on each phase change; the timer only re-renders the
+        /// countdown text between those changes.
+        /// </summary>
+        private void SetupUpdateStatus()
+        {
+            _updateService.StatusChanged += OnUpdateStatusChanged;
+
+            _updateStatusTimer = new System.Windows.Forms.Timer { Interval = 30_000 };
+            _updateStatusTimer.Tick += (s, e) => RenderUpdateStatus();
+            _updateStatusTimer.Start();
+
+            RenderUpdateStatus();
+        }
+
+        private void OnUpdateStatusChanged(object? sender, EventArgs e)
+        {
+            // Raised from the updater's background thread.
+            if (IsDisposed) return;
+
+            try
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(RenderUpdateStatus);
+                    return;
+                }
+
+                RenderUpdateStatus();
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle not created yet, or the form is tearing down.
+            }
+        }
+
+        private void RenderUpdateStatus()
+        {
+            labelUpdateStatus.Text = _updateService.Phase switch
+            {
+                UpdatePhase.Checking => "Checking for updates...",
+                UpdatePhase.Downloading => $"{_updateService.LastResult}...",
+                UpdatePhase.Disabled => _updateService.LastResult ?? "Auto-updates disabled",
+                _ => DescribeNextCheck()
+            };
+        }
+
+        private string DescribeNextCheck()
+        {
+            var next = _updateService.NextCheckUtc;
+            if (next is null)
+                return _updateService.LastResult ?? "Update check pending";
+
+            string when = FormatCountdown(next.Value - DateTimeOffset.UtcNow);
+
+            return _updateService.LastResult is null
+                ? $"Next update check {when}"
+                : $"{_updateService.LastResult} - next check {when}";
+        }
+
+        private static string FormatCountdown(TimeSpan remaining)
+        {
+            if (remaining <= TimeSpan.Zero) return "now";
+            if (remaining.TotalMinutes < 1) return "in under a minute";
+            if (remaining.TotalHours < 1) return $"in {remaining.Minutes}m";
+
+            return $"in {(int)remaining.TotalHours}h {remaining.Minutes}m";
+        }
+
+        private static string GetDisplayVersion()
+        {
+            var assembly = Assembly.GetExecutingAssembly();
+
+            var informational = assembly
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()
+                ?.InformationalVersion;
+
+            if (!string.IsNullOrWhiteSpace(informational))
+            {
+                // Strip the "+<commit hash>" build metadata the SDK appends.
+                int plus = informational.IndexOf('+');
+                return plus >= 0 ? informational[..plus] : informational;
+            }
+
+            return assembly.GetName().Version?.ToString(3) ?? "unknown";
         }
 
         private void SetupSystemTray()
@@ -337,10 +453,11 @@ namespace BakerScaleConnect
             _contextMenu.Items.Add("-"); // Separator
             _contextMenu.Items.Add("Exit", null, ExitApplication);
 
-            // Create the NotifyIcon
+            // Create the NotifyIcon, reusing the window's own icon so the tray matches
+            // the title bar and the taskbar.
             _notifyIcon = new NotifyIcon()
             {
-                Icon = SystemIcons.Application, // You can replace this with a custom icon
+                Icon = CreateTrayIcon(),
                 ContextMenuStrip = _contextMenu,
                 Text = "Baker Scale Connect",
                 Visible = true
@@ -348,6 +465,52 @@ namespace BakerScaleConnect
 
             // Handle double-click to show/hide the application
             _notifyIcon.DoubleClick += (s, e) => ToggleApplicationVisibility();
+        }
+
+        /// <summary>
+        /// Builds the tray icon from the form's own icon, so the notification area
+        /// matches the title bar and the taskbar.
+        ///
+        /// pos.ico ships a single 256x256 frame, and <c>new Icon(icon, size)</c> only
+        /// selects the nearest frame that already exists — it does not rescale — so it
+        /// would hand the shell a 256px image to squeeze into a 16px slot. Render the
+        /// tray-sized copy ourselves instead.
+        /// </summary>
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool DestroyIcon(IntPtr hIcon);
+
+        private Icon CreateTrayIcon()
+        {
+            if (this.Icon is null)
+                return SystemIcons.Application;
+
+            try
+            {
+                Size size = SystemInformation.SmallIconSize;
+
+                using var source = this.Icon.ToBitmap();
+                using var scaled = new Bitmap(size.Width, size.Height);
+
+                using (var g = Graphics.FromImage(scaled))
+                {
+                    g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                    g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                    g.DrawImage(source, 0, 0, size.Width, size.Height);
+                }
+
+                // Icon.FromHandle does not take ownership of the HICON, so hold onto
+                // the handle and destroy it explicitly in Dispose.
+                _trayIconHandle = scaled.GetHicon();
+                _trayIcon = Icon.FromHandle(_trayIconHandle);
+                return _trayIcon;
+            }
+            catch (Exception ex) when (ex is ArgumentException or ExternalException)
+            {
+                // Unreadable icon resource or a GDI+ failure — falling back to the
+                // stock icon beats failing startup over a piece of chrome.
+                return SystemIcons.Application;
+            }
         }
 
         private void Form1_Resize(object? sender, EventArgs e)
@@ -400,6 +563,8 @@ namespace BakerScaleConnect
 
         private async void ExitApplication(object? sender, EventArgs e)
         {
+            _isExiting = true;
+
             // Stop the background service gracefully
             await _host.StopAsync();
 
@@ -408,6 +573,62 @@ namespace BakerScaleConnect
 
             // Exit the application
             Application.Exit();
+        }
+
+        /// <summary>
+        /// Called when the generic host stops. On a normal exit that is just the tail
+        /// of <see cref="ExitApplication"/> and there is nothing left to do; otherwise
+        /// a hosted service failed fatally and the UI has to come down with it rather
+        /// than leave a windowless process holding the device handles.
+        /// </summary>
+        internal void ShutdownFromHost()
+        {
+            if (_isExiting) return;
+
+            try
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(ShutdownFromHost);
+                    return;
+                }
+            }
+            catch (InvalidOperationException)
+            {
+                // The window handle doesn't exist yet — the failure happened before the
+                // message loop started. Nothing to marshal to, so exit outright.
+                Environment.Exit(1);
+                return;
+            }
+
+            _isExiting = true;
+            _notifyIcon?.Dispose();
+            Application.Exit();
+        }
+
+        /// <summary>
+        /// Called from the single-instance listener thread when a duplicate launch
+        /// asks us to surface. Marshals onto the UI thread before touching the form.
+        /// </summary>
+        internal void ShowFromSecondInstance()
+        {
+            if (_isExiting) return;
+
+            try
+            {
+                if (InvokeRequired)
+                {
+                    BeginInvoke(ShowFromSecondInstance);
+                    return;
+                }
+
+                ShowApplication(null, EventArgs.Empty);
+            }
+            catch (InvalidOperationException)
+            {
+                // Handle not created yet, or the form is being torn down. Ignore —
+                // failing to raise the window is never worth crashing over.
+            }
         }
 
         #region PAX Terminal Methods
@@ -914,8 +1135,12 @@ namespace BakerScaleConnect
             if (disposing)
             {
                 StopRetryTimer();
+                _updateService.StatusChanged -= OnUpdateStatusChanged;
+                _updateStatusTimer?.Dispose();
                 _scannerManager?.Dispose();
                 _notifyIcon?.Dispose();
+                _trayIcon?.Dispose();
+                if (_trayIconHandle != IntPtr.Zero) DestroyIcon(_trayIconHandle);
                 _contextMenu?.Dispose();
                 components?.Dispose();
             }

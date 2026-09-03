@@ -6,8 +6,13 @@
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
-    <Version>1.0.4</Version>
+    <Version>1.0.6</Version>
+    <ApplicationIcon>pos.ico</ApplicationIcon>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Content Include="pos.ico" />
+  </ItemGroup>
 
 <ItemGroup>
     <!-- Gives you ASP.NET Core hosting & minimal APIs -->
@@ -23,15 +28,6 @@
     <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.5" />
     <PackageReference Include="Velopack" Version="0.0.*" />
 </ItemGroup>
-
-  <!--<ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" Version="8.0.1" />
-    <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
-    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.1" />
-    <PackageReference Include="Microsoft.AspNetCore.Hosting" Version="2.3.9" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc" Version="2.3.9" />
-    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" Version="8.0.0" />
-  </ItemGroup>-->
 
   <ItemGroup>
     <Reference Include="Interop.CoreScanner">
