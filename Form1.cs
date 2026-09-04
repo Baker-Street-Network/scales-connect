@@ -787,7 +787,6 @@ namespace BakerScaleConnect
                 if (connectionMethodComboBox.Text == "TCP" && !string.IsNullOrWhiteSpace(terminalIp.Text))
                 {
                     _settings.Aries.TerminalIp = terminalIp.Text;
-                    _settings.Aries.CallbackIp = terminalIp.Text;
                 }
 
                 if (int.TryParse(portNumber.Text, out int port))
