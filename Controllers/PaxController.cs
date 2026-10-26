@@ -304,11 +304,6 @@ namespace BakerScaleConnect.Controllers
             if (!IsAbsoluteHttpUrl(request.DisplayUrl))
                 return BadRequest(new { error = "display_url must be an absolute http or https URL" });
 
-            var callbackPrefix = appSettings.Aries.CallbackIp;
-            if (!string.IsNullOrWhiteSpace(callbackPrefix) &&
-                !request.DisplayUrl.StartsWith(callbackPrefix, StringComparison.OrdinalIgnoreCase))
-                return BadRequest(new { error = $"display_url must start with {callbackPrefix}" });
-
             if (request.LogoUrl != null && !IsAbsoluteHttpUrl(request.LogoUrl))
                 return BadRequest(new { error = "logo_url must be an absolute http or https URL" });
 
