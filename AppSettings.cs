@@ -17,6 +17,7 @@ namespace BakerScaleConnect
         public PaxTerminalConfig PaxTerminal { get; set; } = new();
         public AriesConfig Aries { get; set; } = new();
         public CashDrawerConfig CashDrawer { get; set; } = new();
+        public ScannerConfig Scanner { get; set; } = new();
 
         public class PaxTerminalConfig
         {
@@ -43,6 +44,15 @@ namespace BakerScaleConnect
         public class CashDrawerConfig
         {
             public string SerialPort { get; set; } = "";
+        }
+
+        public class ScannerConfig
+        {
+            /// <summary>
+            /// Serial number of the Zebra scanner/scale to use when several are
+            /// connected. Empty = use the first one discovered.
+            /// </summary>
+            public string SerialNumber { get; set; } = "";
         }
 
         /// <summary>

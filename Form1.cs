@@ -22,6 +22,15 @@ namespace BakerScaleConnect
         private System.Windows.Forms.Timer? _retryTimer;
         private int _retryCount;
         private const int RETRY_INTERVAL_MS = 5000; // 5 seconds between retries
+
+        // PnP events only fire on plug/unplug, so on their own they miss emulation
+        // being switched off underneath us or CoreScanner restarting. Re-check on a
+        // timer so the window — and the emulator — never drift from reality.
+        private System.Windows.Forms.Timer? _healthCheckTimer;
+        private const int HEALTH_CHECK_INTERVAL_MS = 30_000;
+
+        private readonly ToolTip _scannerToolTip = new();
+        private bool _isPopulatingScanners;
         private AppSettings _settings;
         private bool _isLoadingPaxSettings;
         private bool _isExiting;
@@ -37,6 +46,9 @@ namespace BakerScaleConnect
             _settings = host.Services.GetRequiredService<AppSettings>();
 
             _updateService = host.Services.GetRequiredService<UpdateService>();
+
+            _scannerManager.PreferredSerialNumber = _settings.Scanner.SerialNumber;
+            comboScanner.DisplayMember = nameof(ScannerInfo.DisplayName);
 
             SetupSystemTray();
             SetupForm();
@@ -54,6 +66,7 @@ namespace BakerScaleConnect
             button1.Click += BtnSetSnapi_Click;
             button2.Click += BtnSetEmulation_Click;
             comboVolume.SelectedIndexChanged += ComboVolume_SelectedIndexChanged;
+            comboScanner.SelectedIndexChanged += ComboScanner_SelectedIndexChanged;
 
             // PAX terminal events
             button4.Click += BtnTestConnection_Click;
@@ -72,15 +85,43 @@ namespace BakerScaleConnect
         private void Form1_Load(object? sender, EventArgs e)
         {
             // Hide buttons and volume until we know the scanner state
-            button1.Visible = false;
-            button2.Visible = false;
-            comboVolume.Visible = false;
-            labelVolume.Visible = false;
+            HideScannerControls();
 
             // Listen for scanner attach/detach events
             _scannerManager.ScannerPnPChanged += OnScannerPnPChanged;
 
             DiscoverAndUpdateUI();
+
+            _healthCheckTimer = new System.Windows.Forms.Timer { Interval = HEALTH_CHECK_INTERVAL_MS };
+            _healthCheckTimer.Tick += HealthCheckTimer_Tick;
+            _healthCheckTimer.Start();
+        }
+
+        private void HealthCheckTimer_Tick(object? sender, EventArgs e)
+        {
+            // The retry loop is already polling; and rebuilding a list the user has
+            // open would yank it out from under them.
+            if (_retryTimer != null || comboScanner.DroppedDown || comboVolume.DroppedDown)
+                return;
+
+            try
+            {
+                DiscoverAndUpdateUI();
+            }
+            catch (Exception ex)
+            {
+                // An exception escaping a timer tick takes the whole app down. Next
+                // tick tries again.
+                System.Diagnostics.Debug.WriteLine($"Scanner health check failed: {ex}");
+            }
+        }
+
+        private void HideScannerControls()
+        {
+            button1.Visible = false;
+            button2.Visible = false;
+            comboVolume.Visible = false;
+            labelVolume.Visible = false;
         }
 
         /// <summary>
@@ -104,10 +145,7 @@ namespace BakerScaleConnect
                 label4.Text = "⚠️ Scanner disconnected — waiting for reconnect...";
                 label5.Text = "";
                 label6.Text = "";
-                button1.Visible = false;
-                button2.Visible = false;
-                comboVolume.Visible = false;
-                labelVolume.Visible = false;
+                HideScannerControls();
             }
 
             // Small delay to let the device fully enumerate before re-querying
@@ -159,30 +197,16 @@ namespace BakerScaleConnect
         {
             var result = _scannerManager.DiscoverScanners();
 
-            if (!result.Success)
+            if (!result.Success || result.ScannersFound == 0)
             {
-                label4.Text = "🚫 " + result.ErrorMessage;
+                label4.Text = result.Success
+                    ? "🔍 No scanner found — retrying automatically..."
+                    : "🚫 " + result.ErrorMessage;
+                _scannerToolTip.SetToolTip(label4, label4.Text);
                 label5.Text = "";
                 label6.Text = "";
-                button1.Visible = false;
-                button2.Visible = false;
-                comboVolume.Visible = false;
-                labelVolume.Visible = false;
-                StartRetryTimer();
-                return;
-            }
-
-            var scanners = _scannerManager.DiscoveredScanners;
-
-            if (scanners.Count == 0)
-            {
-                label4.Text = "🔍 No scanner found — retrying automatically...";
-                label5.Text = "";
-                label6.Text = "";
-                button1.Visible = false;
-                button2.Visible = false;
-                comboVolume.Visible = false;
-                labelVolume.Visible = false;
+                HideScannerControls();
+                PopulateScannerPicker();
                 StartRetryTimer();
                 return;
             }
@@ -190,70 +214,175 @@ namespace BakerScaleConnect
             // Scanner(s) found — stop retrying
             StopRetryTimer();
 
-            var primary = scanners[0];
-            if (scanners.Count == 1)
-                label4.Text = $"✅️ Scanner found: {primary.ModelNo} (SN: {primary.SerialNo})";
+            PopulateScannerPicker();
+            UpdateActiveScannerUI();
+        }
+
+        /// <summary>
+        /// Fills the scanner picker from the last discovery and selects the scanner
+        /// commands are actually going to, so the picker never disagrees with it.
+        /// </summary>
+        private void PopulateScannerPicker()
+        {
+            var scanners = _scannerManager.DiscoveredScanners;
+            var active = _scannerManager.ActiveScanner;
+
+            _isPopulatingScanners = true;
+            comboScanner.BeginUpdate();
+            try
+            {
+                comboScanner.Items.Clear();
+                foreach (var scanner in scanners)
+                    comboScanner.Items.Add(scanner);
+
+                comboScanner.SelectedItem = active;
+                comboScanner.Enabled = scanners.Count > 0;
+            }
+            finally
+            {
+                comboScanner.EndUpdate();
+                _isPopulatingScanners = false;
+            }
+        }
+
+        private void ComboScanner_SelectedIndexChanged(object? sender, EventArgs e)
+        {
+            if (_isPopulatingScanners || comboScanner.SelectedItem is not ScannerInfo picked)
+                return;
+
+            _scannerManager.PreferredSerialNumber = picked.SerialNo.Trim();
+            _settings.Scanner.SerialNumber = picked.SerialNo.Trim();
+            _settings.Save();
+
+            UpdateActiveScannerUI();
+        }
+
+        /// <summary>
+        /// Refreshes the status rows, buttons and volume for the active scanner.
+        /// </summary>
+        private void UpdateActiveScannerUI()
+        {
+            var scanners = _scannerManager.DiscoveredScanners;
+            var active = _scannerManager.ActiveScanner;
+            if (active == null) return;
+
+            if (_scannerManager.PreferredScannerMissing)
+                label4.Text = $"⚠️ Saved scanner SN {_scannerManager.PreferredSerialNumber} not found — using SN {active.SerialNo.Trim()}";
+            else if (scanners.Count > 1)
+                label4.Text = $"✅️ Using SN {active.SerialNo.Trim()} ({scanners.Count} scanners connected)";
             else
-                label4.Text = $"⚠️ {scanners.Count} scanners found — using first (ID {primary.ScannerID})";
+                label4.Text = $"✅️ Scanner found: {active.ModelNo.Trim()} (SN: {active.SerialNo.Trim()})";
+            _scannerToolTip.SetToolTip(label4, label4.Text);
 
             // --- Interface type & SNAPI button ---
-            bool isSnapi = string.Equals(primary.ScannerType, "SNAPI", StringComparison.OrdinalIgnoreCase);
+            bool isSnapi = IsSnapi(active);
             label5.Text = isSnapi
-                ? $"✅️ Interface: {primary.GetFriendlyType()}"
-                : $"⚠️ Interface: {primary.GetFriendlyType()} (not SNAPI)";
+                ? $"✅️ Interface: {active.GetFriendlyType()}"
+                : $"⚠️ Interface: {active.GetFriendlyType()} (not SNAPI)";
             button1.Visible = !isSnapi;
             button1.Enabled = !isSnapi;
             button1.Text = isSnapi ? "Already SNAPI" : "Set SNAPI";
 
             // --- Keyboard emulation status & button ---
-            var kbStatus = _scannerManager.GetKeyboardEmulationConfig();
-            if (kbStatus.Success)
-            {
-                if (kbStatus.Enabled)
-                {
-                    label6.Text = "✅️ Keyboard Emulation: On";
-                    button2.Visible = false;
-                    button2.Enabled = false;
-                    button2.Text = "Already Enabled";
-                }
-                else
-                {
-                    label6.Text = "⏳ Keyboard Emulation: Off";
-                    button2.Visible = true;
-                    button2.Enabled = true;
-                    button2.Text = "Enable Emulation";
-                }
-            }
-            else
-            {
-                label6.Text = "⚠️ Keyboard Emulation: Unknown";
-                button2.Visible = true;
-                button2.Enabled = true;
-                button2.Text = "Enable Emulation";
-            }
+            UpdateKeyboardEmulationUI(active);
 
             // --- Beeper volume ---
             labelVolume.Visible = true;
             comboVolume.Visible = true;
+            ShowBeeperVolume();
+        }
+
+        /// <summary>
+        /// Reads the beeper volume back from the scanner and selects it. Leaves the
+        /// dropdown blank when it can't be read — showing a guess would look exactly
+        /// like a real reading.
+        /// </summary>
+        private void ShowBeeperVolume()
+        {
             var volResult = _scannerManager.GetBeeperVolume();
+
+            // SDK values: 0=High, 1=Medium, 2=Low  |  ComboBox: 0=Low, 1=Medium, 2=High
+            int index = !volResult.Success ? -1 : volResult.Volume switch
+            {
+                0 => 2, // High
+                1 => 1, // Medium
+                2 => 0, // Low
+                _ => -1
+            };
+
             // Temporarily unhook the event so programmatic selection doesn't trigger a SET
             comboVolume.SelectedIndexChanged -= ComboVolume_SelectedIndexChanged;
-            if (volResult.Success)
+            comboVolume.SelectedIndex = index;
+            comboVolume.SelectedIndexChanged += ComboVolume_SelectedIndexChanged;
+
+            _scannerToolTip.SetToolTip(comboVolume, index >= 0
+                ? ""
+                : volResult.Success
+                    ? $"Scanner reported an unrecognized volume value ({volResult.Volume})"
+                    : volResult.ErrorMessage);
+        }
+
+        private static bool IsSnapi(ScannerInfo scanner) =>
+            string.Equals(scanner.ScannerType, "SNAPI", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Shows the real keyboard emulation state, and turns it back on when it has
+        /// been switched off under a SNAPI scanner — in SNAPI mode the scanner sends
+        /// no keystrokes of its own, so without the emulator scans go nowhere.
+        ///
+        /// Emulation is a CoreScanner-wide setting, not per scanner, and the setting
+        /// alone isn't enough: the separate SimulatedHidKeyboard process has to be
+        /// running in this session to actually type. Both are checked.
+        /// </summary>
+        private void UpdateKeyboardEmulationUI(ScannerInfo active)
+        {
+            var kbStatus = _scannerManager.GetKeyboardEmulationConfig();
+            bool autoEnabled = false;
+
+            if (kbStatus.Success && !kbStatus.Enabled && IsSnapi(active))
             {
-                // SDK values: 0=High, 1=Medium, 2=Low  |  ComboBox: 0=Low, 1=Medium, 2=High
-                comboVolume.SelectedIndex = volResult.Volume switch
-                {
-                    0 => 2, // High
-                    1 => 1, // Medium
-                    2 => 0, // Low
-                    _ => 2  // Default to High if unknown
-                };
+                var (success, message) = _scannerManager.SetKeyboardEmulation(true);
+                System.Diagnostics.Debug.WriteLine($"Keyboard emulation was off; auto-enable: {message}");
+
+                // Re-read rather than trust the set call's status.
+                kbStatus = _scannerManager.GetKeyboardEmulationConfig();
+                autoEnabled = success && kbStatus.Success && kbStatus.Enabled;
+            }
+
+            string tooltip = "";
+            bool showEnableButton;
+
+            if (!kbStatus.Success)
+            {
+                label6.Text = "⚠️ Keyboard Emulation: Unknown";
+                tooltip = kbStatus.ErrorMessage;
+                showEnableButton = true;
+            }
+            else if (!kbStatus.Enabled)
+            {
+                label6.Text = "⏳ Keyboard Emulation: Off";
+                showEnableButton = true;
+            }
+            else if (!ScannerManager.IsKeyboardEmulatorProcessRunning())
+            {
+                label6.Text = "⚠️ Emulation on, emulator not running";
+                tooltip = "Keyboard emulation is enabled, but SimulatedHidKeyboard.exe is not running " +
+                          "in this Windows session, so scans will not be typed.\n" +
+                          "Restart the CoreScanner service or reboot to bring it back.";
+                showEnableButton = false;
             }
             else
             {
-                comboVolume.SelectedIndex = 2; // Default to High
+                label6.Text = autoEnabled
+                    ? $"✅️ Keyboard Emulation: On (re-enabled {DateTime.Now:HH:mm})"
+                    : "✅️ Keyboard Emulation: On";
+                showEnableButton = false;
             }
-            comboVolume.SelectedIndexChanged += ComboVolume_SelectedIndexChanged;
+
+            _scannerToolTip.SetToolTip(label6, tooltip);
+            button2.Visible = showEnableButton;
+            button2.Enabled = showEnableButton;
+            button2.Text = "Enable Emulation";
         }
 
         /// <summary>
@@ -275,14 +404,17 @@ namespace BakerScaleConnect
             {
                 MessageBox.Show(message, "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
+
+            // Show what the scanner now holds, not what was picked.
+            ShowBeeperVolume();
         }
 
         /// <summary>
-        /// Switch the primary scanner to SNAPI host mode.
+        /// Switch the active scanner to SNAPI host mode.
         /// </summary>
         private void BtnSetSnapi_Click(object? sender, EventArgs e)
         {
-            var scanner = _scannerManager.PrimaryScanner;
+            var scanner = _scannerManager.ActiveScanner;
             if (scanner == null)
             {
                 MessageBox.Show("No scanner discovered. Cannot switch host mode.",
@@ -315,16 +447,17 @@ namespace BakerScaleConnect
             button2.Enabled = false;
             button2.Text = "Enabling...";
             var (success, message) = _scannerManager.SetKeyboardEmulation(true);
-            if (success)
-            {
-                label6.Text = "✅️ Keyboard Emulation: On";
-                button2.Text = "Already Enabled";
-            }
+            if (!success)
+                MessageBox.Show(message, "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Error);
+
+            // Show what CoreScanner now reports, not what we asked for.
+            var active = _scannerManager.ActiveScanner;
+            if (active != null)
+                UpdateKeyboardEmulationUI(active);
             else
             {
                 button2.Enabled = true;
                 button2.Text = "Enable Emulation";
-                MessageBox.Show(message, "Baker Scale Connect", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
         }
 
@@ -1135,6 +1268,8 @@ namespace BakerScaleConnect
             if (disposing)
             {
                 StopRetryTimer();
+                _healthCheckTimer?.Dispose();
+                _scannerToolTip.Dispose();
                 _updateService.StatusChanged -= OnUpdateStatusChanged;
                 _updateStatusTimer?.Dispose();
                 _scannerManager?.Dispose();

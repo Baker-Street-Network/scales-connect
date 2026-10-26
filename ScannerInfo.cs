@@ -35,6 +35,13 @@ namespace BakerScaleConnect
             };
         }
 
+        /// <summary>
+        /// Label for the scanner picker. Serial number is what tells two identical
+        /// models on the same workstation apart.
+        /// </summary>
+        public string DisplayName =>
+            $"{(string.IsNullOrWhiteSpace(ModelNo) ? "Scanner" : ModelNo.Trim())} — SN {SerialNo.Trim()} ({GetFriendlyType()})";
+
         public override string ToString() =>
             $"ID:{ScannerID} Type:{GetFriendlyType()} Model:{ModelNo} SN:{SerialNo}";
     }

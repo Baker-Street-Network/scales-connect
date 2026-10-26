@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using System.Xml;
 using CoreScanner;
 
@@ -15,7 +16,9 @@ namespace BakerScaleConnect
         private const int KEYBOARD_EMULATOR_GET_CONFIG = 6302;
         private const int SCALE_READ_WEIGHT = 7000;
         private const int RSM_ATTR_GET = 5001;
-        private const int RSM_ATTR_SET = 5004;
+        // SET only changes the running value, which the scanner drops on its next
+        // reset or replug. STORE also writes it to the scanner's saved config.
+        private const int RSM_ATTR_STORE = 5005;
 
         // RSM attribute IDs
         private const int ATTR_BEEPER_VOLUME = 140;
@@ -42,10 +45,20 @@ namespace BakerScaleConnect
         // SNAPI host mode code
         private const string SNAPI_WITH_IMAGING = "XUA-45001-9";
 
+        // Process that turns barcode events into keystrokes. CoreScanner launches it
+        // once, at service start, into the console session — it is not relaunched if
+        // it dies, so the emulator flag can read "on" while nothing is being typed.
+        private const string KEYBOARD_EMULATOR_PROCESS = "SimulatedHidKeyboard";
+
         private CCoreScannerClass? _coreScanner;
         private bool _isOpen;
         private bool _eventsWired;
-        private readonly List<ScannerInfo> _discoveredScanners = new();
+        private readonly object _connectionLock = new();
+
+        // Replaced wholesale on each discovery rather than cleared and refilled: the
+        // web API rediscovers from request threads while weight reads and the UI are
+        // using the list.
+        private volatile IReadOnlyList<ScannerInfo> _discoveredScanners = Array.Empty<ScannerInfo>();
 
         /// <summary>
         /// Fired when a scanner is attached or detached (PnP event from CoreScanner).
@@ -56,12 +69,41 @@ namespace BakerScaleConnect
         /// <summary>
         /// The list of scanners found during the last discovery.
         /// </summary>
-        public IReadOnlyList<ScannerInfo> DiscoveredScanners => _discoveredScanners.AsReadOnly();
+        public IReadOnlyList<ScannerInfo> DiscoveredScanners => _discoveredScanners;
 
         /// <summary>
-        /// The primary scanner to use for commands (first discovered).
+        /// Serial number of the scanner the user picked. Serial rather than scanner ID
+        /// because CoreScanner renumbers IDs whenever devices re-enumerate.
         /// </summary>
-        public ScannerInfo? PrimaryScanner => _discoveredScanners.Count > 0 ? _discoveredScanners[0] : null;
+        public string? PreferredSerialNumber { get; set; }
+
+        /// <summary>
+        /// The scanner commands go to: the picked one if it is connected, otherwise
+        /// the first discovered so a lone replacement scanner still works unattended.
+        /// </summary>
+        public ScannerInfo? ActiveScanner
+        {
+            get
+            {
+                var scanners = _discoveredScanners;
+                return FindPreferred(scanners) ?? (scanners.Count > 0 ? scanners[0] : null);
+            }
+        }
+
+        /// <summary>
+        /// True when a scanner was picked but is not among the connected ones.
+        /// </summary>
+        public bool PreferredScannerMissing =>
+            !string.IsNullOrWhiteSpace(PreferredSerialNumber) && FindPreferred(_discoveredScanners) == null;
+
+        private ScannerInfo? FindPreferred(IReadOnlyList<ScannerInfo> scanners)
+        {
+            string? serial = PreferredSerialNumber?.Trim();
+            if (string.IsNullOrEmpty(serial)) return null;
+
+            return scanners.FirstOrDefault(s =>
+                string.Equals(s.SerialNo.Trim(), serial, StringComparison.OrdinalIgnoreCase));
+        }
 
         public void InitializeCoreScanner()
         {
@@ -87,33 +129,38 @@ namespace BakerScaleConnect
         {
             try
             {
-                InitializeCoreScanner();
-
-                // Open the CoreScanner with all scanner types
-                if (!_isOpen)
+                lock (_connectionLock)
                 {
-                    int appHandle = 0;
-                    short[] scannerTypes = { SCANNER_TYPES_ALL };
-                    short numberOfTypes = 1;
+                    InitializeCoreScanner();
 
-                    _coreScanner.Open(appHandle, scannerTypes, numberOfTypes, out int status);
-                    if (status != STATUS_SUCCESS)
-                        return new ScannerDiscoveryResult
+                    // Open the CoreScanner with all scanner types
+                    if (!_isOpen)
+                    {
+                        int appHandle = 0;
+                        short[] scannerTypes = { SCANNER_TYPES_ALL };
+                        short numberOfTypes = 1;
+
+                        _coreScanner!.Open(appHandle, scannerTypes, numberOfTypes, out int status);
+                        if (status != STATUS_SUCCESS)
                         {
-                            Success = false,
-                            ErrorMessage = $"Failed to open CoreScanner (status: {status})"
-                        };
-                    _isOpen = true;
+                            ResetConnection();
+                            return new ScannerDiscoveryResult
+                            {
+                                Success = false,
+                                ErrorMessage = $"Failed to open CoreScanner (status: {status})"
+                            };
+                        }
+                        _isOpen = true;
+                    }
+
+                    // Register for events
+                    RegisterForEvents();
                 }
 
-                // Register for events
-                RegisterForEvents();
-
                 // Get connected scanners
-                _discoveredScanners.Clear();
                 int[] scannerIdList = new int[255];
 
-                _coreScanner.GetScanners(out short numberOfScanners, scannerIdList, out string outXml, out int getStatus);
+                _coreScanner!.GetScanners(out short numberOfScanners, scannerIdList, out string outXml, out int getStatus);
                 if (getStatus != STATUS_SUCCESS)
                     return new ScannerDiscoveryResult
                     {
@@ -122,7 +169,7 @@ namespace BakerScaleConnect
                     };
 
                 // Parse the XML response to extract scanner info
-                ParseScannersXml(outXml, numberOfScanners);
+                _discoveredScanners = ParseScannersXml(outXml, numberOfScanners);
 
                 return new ScannerDiscoveryResult
                 {
@@ -132,12 +179,38 @@ namespace BakerScaleConnect
             }
             catch (Exception ex)
             {
+                // Most often the CoreScanner service restarted and our COM proxy now
+                // points at a dead process. Drop it so the next attempt reconnects
+                // instead of failing against the stale handle forever.
+                lock (_connectionLock)
+                {
+                    ResetConnection();
+                }
+
                 return new ScannerDiscoveryResult
                 {
                     Success = false,
                     ErrorMessage = $"Scanner discovery error: {ex.Message}"
                 };
             }
+        }
+
+        /// <summary>
+        /// Releases the COM proxy and forgets connection state so the next discovery
+        /// starts from scratch. Caller holds <see cref="_connectionLock"/>.
+        /// </summary>
+        private void ResetConnection()
+        {
+            var scanner = _coreScanner;
+            _coreScanner = null;
+            _isOpen = false;
+            _eventsWired = false;
+            _discoveredScanners = Array.Empty<ScannerInfo>();
+
+            if (scanner == null) return;
+
+            try { scanner.PNPEvent -= OnPNPEvent; } catch { }
+            try { Marshal.FinalReleaseComObject(scanner); } catch { }
         }
 
         /// <summary>
@@ -262,13 +335,18 @@ namespace BakerScaleConnect
                 xmlDoc.XmlResolver = null;
                 xmlDoc.LoadXml(outXml);
 
-                string stateStr = xmlDoc.DocumentElement?.GetElementsByTagName("KeyEnumState").Item(0)?.InnerText ?? "0";
+                string? stateStr = xmlDoc.DocumentElement?.GetElementsByTagName("KeyEnumState").Item(0)?.InnerText?.Trim();
                 string localeStr = xmlDoc.DocumentElement?.GetElementsByTagName("KeyEnumLocale").Item(0)?.InnerText ?? "0";
+
+                // A missing tag means we could not read the state, not that it is off —
+                // reporting "off" here would hide a real problem behind a plausible answer.
+                if (string.IsNullOrEmpty(stateStr))
+                    return new KeyboardEmulationStatus { Success = false, ErrorMessage = $"Unrecognized emulator config: {outXml}" };
 
                 return new KeyboardEmulationStatus
                 {
                     Success = true,
-                    Enabled = stateStr == "1",
+                    Enabled = stateStr == "1" || stateStr.Equals("true", StringComparison.OrdinalIgnoreCase),
                     LocaleIndex = int.TryParse(localeStr, out int loc) ? loc : 0
                 };
             }
@@ -279,12 +357,38 @@ namespace BakerScaleConnect
         }
 
         /// <summary>
-        /// Parses the XML returned by GetScanners to populate the scanner list.
+        /// Whether the keyboard emulator process is running in this user's session.
+        /// The emulator flag alone doesn't prove keystrokes are flowing — this does.
+        /// </summary>
+        public static bool IsKeyboardEmulatorProcessRunning()
+        {
+            int sessionId;
+            using (var current = System.Diagnostics.Process.GetCurrentProcess())
+                sessionId = current.SessionId;
+
+            var processes = System.Diagnostics.Process.GetProcessesByName(KEYBOARD_EMULATOR_PROCESS);
+            try
+            {
+                return processes.Any(p =>
+                {
+                    try { return p.SessionId == sessionId; }
+                    catch { return false; } // exited between enumeration and query
+                });
+            }
+            finally
+            {
+                foreach (var p in processes) p.Dispose();
+            }
+        }
+
+        /// <summary>
+        /// Parses the XML returned by GetScanners into a new scanner list.
         /// Follows the same pattern as zebra-example XmlReader.ReadXmlString_GetScanners.
         /// </summary>
-        private void ParseScannersXml(string xml, int expectedCount)
+        private static List<ScannerInfo> ParseScannersXml(string xml, int expectedCount)
         {
-            if (string.IsNullOrEmpty(xml) || expectedCount < 1) return;
+            var scanners = new List<ScannerInfo>();
+            if (string.IsNullOrEmpty(xml) || expectedCount < 1) return scanners;
 
             try
             {
@@ -310,7 +414,7 @@ namespace BakerScaleConnect
                                 {
                                     inScanner = true;
                                     current = new ScannerInfo { ScannerType = scannerType };
-                                    _discoveredScanners.Add(current);
+                                    scanners.Add(current);
                                 }
                             }
                             break;
@@ -337,6 +441,8 @@ namespace BakerScaleConnect
             {
                 // XML parse errors are non-fatal; we keep whatever scanners were parsed
             }
+
+            return scanners;
         }
 
         /// <summary>
@@ -344,15 +450,18 @@ namespace BakerScaleConnect
         /// </summary>
         public void Close()
         {
-            if (_coreScanner != null && _isOpen)
+            lock (_connectionLock)
             {
-                try
+                if (_coreScanner != null && _isOpen)
                 {
-                    int appHandle = 0;
-                    _coreScanner.Close(appHandle, out int status);
+                    try
+                    {
+                        int appHandle = 0;
+                        _coreScanner.Close(appHandle, out int status);
+                    }
+                    catch { }
+                    _isOpen = false;
                 }
-                catch { }
-                _isOpen = false;
             }
         }
 
@@ -367,7 +476,7 @@ namespace BakerScaleConnect
             if (_coreScanner == null || !_isOpen)
                 return (false, -1, "CoreScanner not initialized");
 
-            var scanner = PrimaryScanner;
+            var scanner = ActiveScanner;
             if (scanner == null)
                 return (false, -1, "No scanner connected");
 
@@ -410,7 +519,7 @@ namespace BakerScaleConnect
             if (_coreScanner == null || !_isOpen)
                 return (false, "CoreScanner not initialized");
 
-            var scanner = PrimaryScanner;
+            var scanner = ActiveScanner;
             if (scanner == null)
                 return (false, "No scanner connected");
 
@@ -431,7 +540,7 @@ namespace BakerScaleConnect
                     "</cmdArgs>" +
                     "</inArgs>";
 
-                _coreScanner.ExecCommand(RSM_ATTR_SET, ref inXml, out string outXml, out int status);
+                _coreScanner.ExecCommand(RSM_ATTR_STORE, ref inXml, out string outXml, out int status);
 
                 if (status == STATUS_SUCCESS)
                     return (true, "Beeper volume set successfully");
@@ -453,7 +562,7 @@ namespace BakerScaleConnect
             if (_coreScanner == null || !_isOpen)
                 InitializeCoreScanner();
 
-            var scanner = PrimaryScanner;
+            var scanner = ActiveScanner;
             if (scanner == null)
                 return new ScaleWeightResult { Success = false, ErrorMessage = "No scanner connected" };
 

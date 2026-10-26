@@ -35,6 +35,8 @@
             labelUpdateStatus = new Label();
             labelVersion = new Label();
             groupBox1 = new GroupBox();
+            labelScanner = new Label();
+            comboScanner = new ComboBox();
             labelVolume = new Label();
             comboVolume = new ComboBox();
             button2 = new Button();
@@ -103,7 +105,7 @@
             labelUpdateStatus.AutoSize = true;
             labelUpdateStatus.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
             labelUpdateStatus.ForeColor = SystemColors.GrayText;
-            labelUpdateStatus.Location = new Point(9, 455);
+            labelUpdateStatus.Location = new Point(9, 485);
             labelUpdateStatus.Margin = new Padding(2, 0, 2, 0);
             labelUpdateStatus.Name = "labelUpdateStatus";
             labelUpdateStatus.Size = new Size(120, 15);
@@ -141,19 +143,41 @@
             groupBox1.Controls.Add(button1);
             groupBox1.Controls.Add(label5);
             groupBox1.Controls.Add(label4);
+            groupBox1.Controls.Add(comboScanner);
+            groupBox1.Controls.Add(labelScanner);
             groupBox1.Location = new Point(7, 265);
             groupBox1.Margin = new Padding(2);
             groupBox1.Name = "groupBox1";
             groupBox1.Padding = new Padding(2);
-            groupBox1.Size = new Size(302, 125);
+            groupBox1.Size = new Size(302, 155);
             groupBox1.TabIndex = 3;
             groupBox1.TabStop = false;
             groupBox1.Text = "Zebra Scanner/Scale";
-            // 
+            //
+            // labelScanner
+            //
+            labelScanner.AutoSize = true;
+            labelScanner.Location = new Point(5, 24);
+            labelScanner.Margin = new Padding(2, 0, 2, 0);
+            labelScanner.Name = "labelScanner";
+            labelScanner.Size = new Size(51, 15);
+            labelScanner.TabIndex = 8;
+            labelScanner.Text = "Scanner:";
+            //
+            // comboScanner
+            //
+            comboScanner.DropDownStyle = ComboBoxStyle.DropDownList;
+            comboScanner.FormattingEnabled = true;
+            comboScanner.Location = new Point(62, 20);
+            comboScanner.Margin = new Padding(2);
+            comboScanner.Name = "comboScanner";
+            comboScanner.Size = new Size(233, 23);
+            comboScanner.TabIndex = 9;
+            //
             // labelVolume
-            // 
+            //
             labelVolume.AutoSize = true;
-            labelVolume.Location = new Point(5, 92);
+            labelVolume.Location = new Point(5, 130);
             labelVolume.Margin = new Padding(2, 0, 2, 0);
             labelVolume.Name = "labelVolume";
             labelVolume.Size = new Size(104, 15);
@@ -165,7 +189,7 @@
             comboVolume.DropDownStyle = ComboBoxStyle.DropDownList;
             comboVolume.FormattingEnabled = true;
             comboVolume.Items.AddRange(new object[] { "Low", "Medium", "High" });
-            comboVolume.Location = new Point(200, 87);
+            comboVolume.Location = new Point(200, 126);
             comboVolume.Margin = new Padding(2);
             comboVolume.Name = "comboVolume";
             comboVolume.Size = new Size(95, 23);
@@ -173,7 +197,7 @@
             // 
             // button2
             // 
-            button2.Location = new Point(200, 55);
+            button2.Location = new Point(200, 97);
             button2.Margin = new Padding(2);
             button2.Name = "button2";
             button2.Size = new Size(93, 28);
@@ -184,7 +208,7 @@
             // label6
             // 
             label6.AutoSize = true;
-            label6.Location = new Point(5, 68);
+            label6.Location = new Point(5, 104);
             label6.Margin = new Padding(2, 0, 2, 0);
             label6.Name = "label6";
             label6.Size = new Size(149, 15);
@@ -193,7 +217,7 @@
             // 
             // button1
             // 
-            button1.Location = new Point(200, 24);
+            button1.Location = new Point(200, 68);
             button1.Margin = new Padding(2);
             button1.Name = "button1";
             button1.Size = new Size(93, 27);
@@ -204,7 +228,7 @@
             // label5
             // 
             label5.AutoSize = true;
-            label5.Location = new Point(5, 46);
+            label5.Location = new Point(5, 75);
             label5.Margin = new Padding(2, 0, 2, 0);
             label5.Name = "label5";
             label5.Size = new Size(134, 15);
@@ -213,11 +237,10 @@
             // 
             // label4
             // 
-            label4.Dock = DockStyle.Fill;
-            label4.Location = new Point(2, 18);
+            label4.AutoEllipsis = true;
+            label4.Location = new Point(5, 49);
             label4.Name = "label4";
-            label4.Padding = new Padding(0, 6, 0, 0);
-            label4.Size = new Size(298, 105);
+            label4.Size = new Size(290, 17);
             label4.TabIndex = 0;
             label4.Text = "🔍 Discovering scanners...";
             // 
@@ -436,7 +459,7 @@
             Webserver.Margin = new Padding(2);
             Webserver.Name = "Webserver";
             Webserver.Padding = new Padding(2);
-            Webserver.Size = new Size(161, 125);
+            Webserver.Size = new Size(161, 155);
             Webserver.TabIndex = 5;
             Webserver.TabStop = false;
             Webserver.Text = "Webserver";
@@ -448,7 +471,7 @@
             textBox1.Multiline = true;
             textBox1.Name = "textBox1";
             textBox1.ReadOnly = true;
-            textBox1.Size = new Size(153, 97);
+            textBox1.Size = new Size(153, 127);
             textBox1.TabIndex = 6;
             textBox1.Text = "✅️ Webserver listening on localhost";
             // 
@@ -458,7 +481,7 @@
             groupBoxCashDrawer.Controls.Add(labelCashDrawerPort);
             groupBoxCashDrawer.Controls.Add(cashDrawerPortComboBox);
             groupBoxCashDrawer.Controls.Add(btnReloadCashDrawerPorts);
-            groupBoxCashDrawer.Location = new Point(7, 394);
+            groupBoxCashDrawer.Location = new Point(7, 424);
             groupBoxCashDrawer.Margin = new Padding(2);
             groupBoxCashDrawer.Name = "groupBoxCashDrawer";
             groupBoxCashDrawer.Padding = new Padding(2);
@@ -511,7 +534,7 @@
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(479, 478);
+            ClientSize = new Size(479, 508);
             Controls.Add(groupBoxCashDrawer);
             Controls.Add(Webserver);
             Controls.Add(groupBox2);
@@ -552,6 +575,8 @@
         private Label labelVersion;
         private Label labelUpdateStatus;
         private GroupBox groupBox1;
+        private Label labelScanner;
+        private ComboBox comboScanner;
         private Label label4;
         private Label label5;
         private Button button2;
