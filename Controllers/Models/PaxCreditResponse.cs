@@ -29,6 +29,25 @@ namespace BakerScaleConnect.Controllers.Models
         public string? GatewayTransactionId {get;set;}
         public string? HostDetailedMessage {get;set;}
         public string? HostReferenceNumber {get;set;}
+
+        /// <summary>Terminal record number (TraceInformation.ReferenceNumber). Needed to void this transaction.</summary>
+        public string? ReferenceNumber { get; set; }
+
+        /// <summary>Unique transaction ID (TraceInformation.GlobalUid).</summary>
+        public string? GlobalUid { get; set; }
+
+        /// <summary>Serial number of the terminal that ran the transaction (TraceInformation.Sn).</summary>
+        public string? TerminalSn { get; set; }
+
+        /// <summary>Terminal local date and time of the transaction, YYYYMMDDhhmmss.</summary>
+        public string? TerminalTimestamp { get; set; }
+
+        /// <summary>Approved amount in cents (AmountInformation.ApprovedAmount).</summary>
+        public string? ApprovedAmount { get; set; }
+
+        /// <summary>Processor card token (CofInformation.Token), when the processor returns one.</summary>
+        public string? Token { get; set; }
+
         public string RawResponse { get; set; }
     }
 }

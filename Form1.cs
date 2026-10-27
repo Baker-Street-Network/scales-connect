@@ -559,7 +559,7 @@ namespace BakerScaleConnect
             return $"in {(int)remaining.TotalHours}h {remaining.Minutes}m";
         }
 
-        private static string GetDisplayVersion()
+        internal static string GetDisplayVersion()
         {
             var assembly = Assembly.GetExecutingAssembly();
 

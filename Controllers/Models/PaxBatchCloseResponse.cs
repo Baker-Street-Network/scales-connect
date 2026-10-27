@@ -23,6 +23,21 @@ namespace BakerScaleConnect.Controllers.Models
         /// <summary>Host response information.</summary>
         public string? HostResponse { get; set; }
 
+        /// <summary>Serial number of the terminal whose batch was closed.</summary>
+        public string? TerminalSn { get; set; }
+
+        /// <summary>Terminal local date and time of the close, YYYYMMDDhhmmss.</summary>
+        public string? TerminalTimestamp { get; set; }
+
+        /// <summary>When Scales Connect received the close confirmation (UTC).</summary>
+        public DateTime? ClosedAtUtc { get; set; }
+
+        /// <summary>Terminal ID assigned by the processor.</summary>
+        public string? Tid { get; set; }
+
+        /// <summary>Merchant ID assigned by the processor.</summary>
+        public string? Mid { get; set; }
+
         /// <summary>Error message if the batch close failed.</summary>
         public string? ErrorMessage { get; set; }
 
