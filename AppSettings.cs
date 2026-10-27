@@ -38,6 +38,11 @@ namespace BakerScaleConnect
 
         public class CashDrawerConfig
         {
+            /// <summary>
+            /// Windows printer the drawer is wired to; the kick goes through its print queue as a raw
+            /// job. Used instead of SerialPort when set.
+            /// </summary>
+            public string PrinterName { get; set; } = "";
             public string SerialPort { get; set; } = "";
         }
 

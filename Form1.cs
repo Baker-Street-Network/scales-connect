@@ -1303,38 +1303,55 @@ namespace BakerScaleConnect
 
         #region Cash Drawer Methods
 
-        private void LoadCashDrawerSettings()
+        /// <summary>
+        /// Where the drawer kick goes: a Windows printer (sent as a raw job) or a COM port.
+        /// An empty name is "(none)".
+        /// </summary>
+        private sealed record DrawerTarget(string Name, bool IsPrinter)
         {
-            PopulateCashDrawerPorts(_settings.CashDrawer.SerialPort);
+            public override string ToString() =>
+                Name == "" ? "(none)" : IsPrinter ? $"Printer: {Name}" : Name;
         }
 
-        private void PopulateCashDrawerPorts(string? savedSelection = null)
+        private void LoadCashDrawerSettings()
         {
-            string currentSelection = savedSelection ?? cashDrawerPortComboBox.Text;
+            PopulateCashDrawerPorts();
+        }
+
+        private void PopulateCashDrawerPorts()
+        {
+            var config = _settings.CashDrawer;
+            var saved = !string.IsNullOrWhiteSpace(config.PrinterName)
+                ? new DrawerTarget(config.PrinterName, true)
+                : new DrawerTarget(config.SerialPort, false);
+
             cashDrawerPortComboBox.Items.Clear();
+            cashDrawerPortComboBox.Items.Add(new DrawerTarget("", false));
 
             try
             {
-                string[] ports = System.IO.Ports.SerialPort.GetPortNames();
-                if (ports.Length > 0)
-                {
-                    foreach (string port in ports)
-                        cashDrawerPortComboBox.Items.Add(port);
-
-                    if (!string.IsNullOrEmpty(currentSelection) && cashDrawerPortComboBox.Items.Contains(currentSelection))
-                        cashDrawerPortComboBox.Text = currentSelection;
-                    else if (cashDrawerPortComboBox.Items.Count > 0)
-                        cashDrawerPortComboBox.SelectedIndex = 0;
-                }
-                else
-                {
-                    cashDrawerPortComboBox.Items.Add("No ports found");
-                }
+                foreach (string port in System.IO.Ports.SerialPort.GetPortNames())
+                    cashDrawerPortComboBox.Items.Add(new DrawerTarget(port, false));
             }
-            catch
+            catch (Exception ex)
             {
-                cashDrawerPortComboBox.Items.Add("Error loading ports");
+                System.Diagnostics.Debug.WriteLine($"Error loading serial ports: {ex.Message}");
             }
+
+            try
+            {
+                foreach (string printer in System.Drawing.Printing.PrinterSettings.InstalledPrinters)
+                    cashDrawerPortComboBox.Items.Add(new DrawerTarget(printer, true));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error loading printers: {ex.Message}");
+            }
+
+            // Keep the saved choice even when its port or printer is missing right now, so it isn't overwritten.
+            if (!cashDrawerPortComboBox.Items.Contains(saved))
+                cashDrawerPortComboBox.Items.Add(saved);
+            cashDrawerPortComboBox.SelectedItem = saved;
         }
 
         private void CashDrawerSettings_Changed(object? sender, EventArgs e)
@@ -1346,11 +1363,12 @@ namespace BakerScaleConnect
         {
             try
             {
-                string selected = cashDrawerPortComboBox.Text;
-                if (selected == "No ports found" || selected == "Error loading ports")
+                // Null while the list is being reloaded.
+                if (cashDrawerPortComboBox.SelectedItem is not DrawerTarget target)
                     return;
 
-                _settings.CashDrawer.SerialPort = selected;
+                _settings.CashDrawer.PrinterName = target.IsPrinter ? target.Name : "";
+                _settings.CashDrawer.SerialPort = target.IsPrinter ? "" : target.Name;
                 _settings.Save();
             }
             catch (Exception ex)
@@ -1363,19 +1381,15 @@ namespace BakerScaleConnect
 
         private async void kickDrawerButton_Click(object sender, EventArgs e)
         {
-            string portName = _settings.CashDrawer.SerialPort;
-
-            if (string.IsNullOrWhiteSpace(portName))
-            {
-                MessageBox.Show("No cash drawer serial port configured.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
-                return;
-            }
-
             kickDrawerButton.Enabled = false;
 
             try
             {
-                await Task.Run(() => SendDrawerKick(portName)).WaitAsync(TimeSpan.FromSeconds(5));
+                await Task.Run(() => CashDrawerService.Kick(_settings.CashDrawer)).WaitAsync(TimeSpan.FromSeconds(5));
+            }
+            catch (InvalidOperationException ex)
+            {
+                MessageBox.Show(ex.Message, "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             }
             catch (Exception ex)
             {
@@ -1385,19 +1399,6 @@ namespace BakerScaleConnect
             {
                 kickDrawerButton.Enabled = true;
             }
-        }
-
-        private static void SendDrawerKick(string portName)
-        {
-            byte[] kickCommand = [0x1B, 0x70, 0x00, 0x19, 0xFA];
-
-            using SerialPort port = new(portName, 9600)
-            {
-                WriteTimeout = 1000,
-                ReadTimeout = 1000
-            };
-            port.Open();
-            port.Write(kickCommand, 0, kickCommand.Length);
         }
     }
 }

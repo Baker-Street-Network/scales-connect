@@ -492,7 +492,7 @@
             // 
             // kickDrawerButton
             // 
-            kickDrawerButton.Location = new Point(281, 22);
+            kickDrawerButton.Location = new Point(356, 21);
             kickDrawerButton.Margin = new Padding(2);
             kickDrawerButton.Name = "kickDrawerButton";
             kickDrawerButton.Size = new Size(98, 23);
@@ -507,22 +507,24 @@
             labelCashDrawerPort.Location = new Point(4, 22);
             labelCashDrawerPort.Margin = new Padding(2, 0, 2, 0);
             labelCashDrawerPort.Name = "labelCashDrawerPort";
-            labelCashDrawerPort.Size = new Size(60, 15);
+            labelCashDrawerPort.Size = new Size(46, 15);
             labelCashDrawerPort.TabIndex = 0;
-            labelCashDrawerPort.Text = "Serial Port";
+            labelCashDrawerPort.Text = "Send To";
             // 
             // cashDrawerPortComboBox
             // 
+            cashDrawerPortComboBox.DropDownStyle = ComboBoxStyle.DropDownList;
+            cashDrawerPortComboBox.DropDownWidth = 300;
             cashDrawerPortComboBox.FormattingEnabled = true;
             cashDrawerPortComboBox.Location = new Point(69, 21);
             cashDrawerPortComboBox.Margin = new Padding(2);
             cashDrawerPortComboBox.Name = "cashDrawerPortComboBox";
-            cashDrawerPortComboBox.Size = new Size(125, 23);
+            cashDrawerPortComboBox.Size = new Size(200, 23);
             cashDrawerPortComboBox.TabIndex = 1;
             // 
             // btnReloadCashDrawerPorts
             // 
-            btnReloadCashDrawerPorts.Location = new Point(198, 21);
+            btnReloadCashDrawerPorts.Location = new Point(273, 21);
             btnReloadCashDrawerPorts.Margin = new Padding(2);
             btnReloadCashDrawerPorts.Name = "btnReloadCashDrawerPorts";
             btnReloadCashDrawerPorts.Size = new Size(79, 23);
