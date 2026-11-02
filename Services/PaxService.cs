@@ -45,12 +45,47 @@ namespace BakerScaleConnect.Services
         /// <summary>
         /// Process a credit card payment through the PAX terminal.
         /// </summary>
-        public async Task<PaxCreditResponse> ProcessCreditPaymentAsync(PaxCreditRequest paymentRequest, CancellationToken cancellationToken = default)
+        public Task<PaxCreditResponse> ProcessCreditPaymentAsync(PaxCreditRequest paymentRequest, CancellationToken cancellationToken = default)
+        {
+            return RunPaymentAsync(paymentRequest, "credit", terminal =>
+            {
+                DoCreditRequest request = BuildCreditRequest(paymentRequest);
+                var result = terminal.Transaction.DoCredit(request, out DoCreditResponse response);
+                return (result, IsOk(result) ? BuildCreditAnswer(paymentRequest, response) : null);
+            }, cancellationToken);
+        }
+
+        /// <summary>
+        /// Process a debit card payment through the PAX terminal. The terminal runs it as debit, so the
+        /// cardholder may be asked for a PIN, and a card with no debit application is turned down.
+        /// </summary>
+        public Task<PaxCreditResponse> ProcessDebitPaymentAsync(PaxCreditRequest paymentRequest, CancellationToken cancellationToken = default)
+        {
+            return RunPaymentAsync(paymentRequest, "debit", terminal =>
+            {
+                DoDebitRequest request = BuildDebitRequest(paymentRequest);
+                var result = terminal.Transaction.DoDebit(request, out DoDebitResponse response);
+                return (result, IsOk(result) ? BuildDebitAnswer(paymentRequest, response) : null);
+            }, cancellationToken);
+        }
+
+        private static bool IsOk(POSLinkAdmin.ExecutionResult result) => result.GetErrorCode() == POSLinkAdmin.ExecutionResult.Code.Ok;
+
+        /// <summary>
+        /// Runs one blocking terminal transaction with cancellation support and turns the outcome into a response.
+        /// </summary>
+        /// <param name="edc">"credit" or "debit", for the log.</param>
+        /// <param name="execute">Sends the transaction; returns the terminal's answer when it gave one.</param>
+        private async Task<PaxCreditResponse> RunPaymentAsync(
+            PaxCreditRequest paymentRequest,
+            string edc,
+            Func<Terminal, (POSLinkAdmin.ExecutionResult Result, PaxCreditResponse? Answer)> execute,
+            CancellationToken cancellationToken)
         {
             try
             {
-                _logger.LogInformation("Processing credit transaction: Type={Type}, Amount={Amount}, EcrRef={EcrRef}, OrigRef={OrigRef}, CardPresent={CardPresent}, Method={Method}",
-                    paymentRequest.TransactionType ?? "Sale", paymentRequest.Amount, paymentRequest.EcrReferenceNumber,
+                _logger.LogInformation("Processing {Edc} transaction: Type={Type}, Amount={Amount}, EcrRef={EcrRef}, OrigRef={OrigRef}, CardPresent={CardPresent}, Method={Method}",
+                    edc, paymentRequest.TransactionType ?? "Sale", paymentRequest.Amount, paymentRequest.EcrReferenceNumber,
                     paymentRequest.OriginalReferenceNumber, paymentRequest.CardPresent, _connectionMethod);
 
                 Terminal terminal = CreateTerminal(_settings.Timeout);
@@ -63,24 +98,18 @@ namespace BakerScaleConnect.Services
 
                 try
                 {
-                    DoCreditRequest request = BuildCreditRequest(paymentRequest);
-
                     // Execute the transaction with cancellation support
-                    // Note: DoCredit is a blocking call, so we run it in a Task and monitor for cancellation
+                    // Note: DoCredit and DoDebit are blocking calls, so we run them in a Task and monitor for cancellation
                     POSLinkAdmin.ExecutionResult result = null!;
-                    DoCreditResponse creditResponse = null!;
+                    PaxCreditResponse? answer = null;
 
-                    var transactionTask = Task.Run(() =>
-                    {
-                        var execResult = terminal.Transaction.DoCredit(request, out DoCreditResponse response);
-                        return (execResult, response);
-                    }, cancellationToken);
+                    var transactionTask = Task.Run(() => execute(terminal), cancellationToken);
 
                     try
                     {
                         var taskResult = await transactionTask;
-                        result = taskResult.execResult;
-                        creditResponse = taskResult.response;
+                        result = taskResult.Result;
+                        answer = taskResult.Answer;
                     }
                     catch (OperationCanceledException)
                     {
@@ -99,41 +128,18 @@ namespace BakerScaleConnect.Services
                     }
 
                     // Build response
-                    if (result.GetErrorCode() == POSLinkAdmin.ExecutionResult.Code.Ok)
+                    if (answer != null)
                     {
-                        _logger.LogInformation("Credit transaction answered: Code={Code}, Message={Message}, RefNum={RefNum}, Sn={Sn}",
-                            creditResponse.ResponseCode, creditResponse.ResponseMessage,
-                            creditResponse.TraceInformation?.ReferenceNumber, creditResponse.TraceInformation?.Sn);
+                        _logger.LogInformation("{Edc} transaction answered: Code={Code}, Message={Message}, RefNum={RefNum}, Sn={Sn}",
+                            edc, answer.ResponseCode, answer.ResponseMessage, answer.ReferenceNumber, answer.TerminalSn);
 
-                        RememberTerminalSn(creditResponse.TraceInformation?.Sn);
+                        RememberTerminalSn(answer.TerminalSn);
 
-                        return new PaxCreditResponse
-                        {
-                            Success = true,
-                            ResponseCode = creditResponse.ResponseCode ?? "",
-                            ResponseMessage = creditResponse.ResponseMessage ?? "",
-                            EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
-                            Timestamp = DateTime.UtcNow,
-
-                            CardBin = creditResponse.AccountInformation?.CardBin,
-                            AuthorizationCode = creditResponse.HostInformation?.AuthorizationCode,
-                            BatchNumber = creditResponse.HostInformation?.BatchNumber,
-                            ControlNumber = creditResponse.HostInformation?.ControlNumber,
-                            GatewayTransactionId = creditResponse.HostInformation?.GatewayTransactionId,
-                            HostDetailedMessage = creditResponse.HostInformation?.HostDetailedMessage,
-                            HostReferenceNumber = creditResponse.HostInformation?.HostReferenceNumber,
-                            ReferenceNumber = creditResponse.TraceInformation?.ReferenceNumber,
-                            GlobalUid = creditResponse.TraceInformation?.GlobalUid,
-                            TerminalSn = creditResponse.TraceInformation?.Sn,
-                            TerminalTimestamp = creditResponse.TraceInformation?.TimeStamp,
-                            ApprovedAmount = creditResponse.AmountInformation?.ApprovedAmount,
-                            Token = NullIfBlank(creditResponse.CofInformation?.Token),
-                            RawResponse = SerializeRaw(creditResponse)
-                        };
+                        return answer;
                     }
                     else
                     {
-                        _logger.LogError("Credit payment failed: ErrorCode={ErrorCode}", result.GetErrorCode());
+                        _logger.LogError("{Edc} payment failed: ErrorCode={ErrorCode}", edc, result.GetErrorCode());
 
                         return new PaxCreditResponse
                         {
@@ -170,7 +176,7 @@ namespace BakerScaleConnect.Services
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error processing credit payment");
+                _logger.LogError(ex, "Error processing {Edc} payment", edc);
                 return new PaxCreditResponse
                 {
                     Success = false,
@@ -798,16 +804,60 @@ namespace BakerScaleConnect.Services
             RawResponse = ""
         };
 
-        private static DoCreditRequest BuildCreditRequest(PaxCreditRequest paymentRequest)
+        private static PaxCreditResponse BuildCreditAnswer(PaxCreditRequest paymentRequest, DoCreditResponse response) => new()
         {
-            var transactionType = paymentRequest.TransactionType switch
-            {
-                "Return" => POSLinkAdmin.Const.TransactionType.Return,
-                "Void" => POSLinkAdmin.Const.TransactionType.Void,
-                _ => POSLinkAdmin.Const.TransactionType.Sale
-            };
+            Success = true,
+            ResponseCode = response.ResponseCode ?? "",
+            ResponseMessage = response.ResponseMessage ?? "",
+            EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
+            Timestamp = DateTime.UtcNow,
 
-            DoCreditRequest request = new() { TransactionType = transactionType };
+            CardBin = response.AccountInformation?.CardBin,
+            AuthorizationCode = response.HostInformation?.AuthorizationCode,
+            BatchNumber = response.HostInformation?.BatchNumber,
+            ControlNumber = response.HostInformation?.ControlNumber,
+            GatewayTransactionId = response.HostInformation?.GatewayTransactionId,
+            HostDetailedMessage = response.HostInformation?.HostDetailedMessage,
+            HostReferenceNumber = response.HostInformation?.HostReferenceNumber,
+            ReferenceNumber = response.TraceInformation?.ReferenceNumber,
+            GlobalUid = response.TraceInformation?.GlobalUid,
+            TerminalSn = response.TraceInformation?.Sn,
+            TerminalTimestamp = response.TraceInformation?.TimeStamp,
+            ApprovedAmount = response.AmountInformation?.ApprovedAmount,
+            Token = NullIfBlank(response.CofInformation?.Token),
+            RawResponse = SerializeRaw(response)
+        };
+
+        private static PaxCreditResponse BuildDebitAnswer(PaxCreditRequest paymentRequest, DoDebitResponse response) => new()
+        {
+            Success = true,
+            ResponseCode = response.ResponseCode ?? "",
+            ResponseMessage = response.ResponseMessage ?? "",
+            EcrReferenceNumber = paymentRequest.EcrReferenceNumber,
+            Timestamp = DateTime.UtcNow,
+
+            // A debit response has no top-level EdcType to read, so say what ran.
+            EdcType = "DEBIT",
+            CardBin = response.AccountInformation?.CardBin,
+            AuthorizationCode = response.HostInformation?.AuthorizationCode,
+            BatchNumber = response.HostInformation?.BatchNumber,
+            ControlNumber = response.HostInformation?.ControlNumber,
+            GatewayTransactionId = response.HostInformation?.GatewayTransactionId,
+            HostDetailedMessage = response.HostInformation?.HostDetailedMessage,
+            HostReferenceNumber = response.HostInformation?.HostReferenceNumber,
+            ReferenceNumber = response.TraceInformation?.ReferenceNumber,
+            GlobalUid = response.TraceInformation?.GlobalUid,
+            TerminalSn = response.TraceInformation?.Sn,
+            TerminalTimestamp = response.TraceInformation?.TimeStamp,
+            ApprovedAmount = response.AmountInformation?.ApprovedAmount,
+            RawResponse = SerializeRaw(response)
+        };
+
+        private static DoDebitRequest BuildDebitRequest(PaxCreditRequest paymentRequest)
+        {
+            var transactionType = ParseTransactionType(paymentRequest);
+
+            DoDebitRequest request = new() { TransactionType = transactionType };
 
             // A Void always cancels the full original amount; the terminal rejects one that carries an amount.
             if (transactionType != POSLinkAdmin.Const.TransactionType.Void)
@@ -818,24 +868,25 @@ namespace BakerScaleConnect.Services
                 };
             }
 
+            request.TraceInformation = BuildTraceRequest(paymentRequest, transactionType);
+            return request;
+        }
+
+        private static POSLinkAdmin.Const.TransactionType ParseTransactionType(PaxCreditRequest paymentRequest) => paymentRequest.TransactionType switch
+        {
+            "Return" => POSLinkAdmin.Const.TransactionType.Return,
+            "Void" => POSLinkAdmin.Const.TransactionType.Void,
+            _ => POSLinkAdmin.Const.TransactionType.Sale
+        };
+
+        private static POSLinkSemiIntegration.Util.TraceRequest BuildTraceRequest(PaxCreditRequest paymentRequest, POSLinkAdmin.Const.TransactionType transactionType)
+        {
             var traceReq = new POSLinkSemiIntegration.Util.TraceRequest
             {
                 EcrReferenceNumber = paymentRequest.EcrReferenceNumber
             };
-            request.TraceInformation = traceReq;
 
-            var cofReq = new POSLinkSemiIntegration.Util.CofRequest();
-            bool hasCof = false;
-
-            if (transactionType == POSLinkAdmin.Const.TransactionType.Sale)
-            {
-                if (paymentRequest.RequestToken)
-                {
-                    cofReq.TokenRequestFlag = POSLinkSemiIntegration.Const.TokenRequestFlag.Yes;
-                    hasCof = true;
-                }
-            }
-            else
+            if (transactionType != POSLinkAdmin.Const.TransactionType.Sale)
             {
                 // Without OriginalReferenceNumber the terminal asks the cashier to key in the record number.
                 traceReq.OriginalReferenceNumber = NullIfBlank(paymentRequest.OriginalReferenceNumber);
@@ -851,6 +902,38 @@ namespace BakerScaleConnect.Services
 
                 // originalLast4 is never sent as AccountInformation.OriginalPan: the First Data BroadPOS app
                 // rejects it with 100003 "ORIGPAN NOT SUPPORTED". It is still used by the pre-Void check.
+            }
+
+            return traceReq;
+        }
+
+        private static DoCreditRequest BuildCreditRequest(PaxCreditRequest paymentRequest)
+        {
+            var transactionType = ParseTransactionType(paymentRequest);
+
+            DoCreditRequest request = new() { TransactionType = transactionType };
+
+            // A Void always cancels the full original amount; the terminal rejects one that carries an amount.
+            if (transactionType != POSLinkAdmin.Const.TransactionType.Void)
+            {
+                request.AmountInformation = new POSLinkAdmin.Util.AmountRequest
+                {
+                    TransactionAmount = paymentRequest.Amount,
+                };
+            }
+
+            request.TraceInformation = BuildTraceRequest(paymentRequest, transactionType);
+
+            var cofReq = new POSLinkSemiIntegration.Util.CofRequest();
+            bool hasCof = false;
+
+            if (transactionType == POSLinkAdmin.Const.TransactionType.Sale)
+            {
+                if (paymentRequest.RequestToken)
+                {
+                    cofReq.TokenRequestFlag = POSLinkSemiIntegration.Const.TokenRequestFlag.Yes;
+                    hasCof = true;
+                }
             }
 
             if (transactionType == POSLinkAdmin.Const.TransactionType.Return && paymentRequest.CardPresent == false)

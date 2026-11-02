@@ -20,8 +20,38 @@ namespace BakerScaleConnect.Controllers
         /// <param name="cancellationToken">Cancellation token to abort the transaction.</param>
         /// <returns>Payment transaction result.</returns>
         [HttpPost("credit")]
-        public async Task<ActionResult<PaxCreditResponse>> ProcessCredit(
+        public Task<ActionResult<PaxCreditResponse>> ProcessCredit(
             [FromBody] PaxCreditRequest request,
+            CancellationToken cancellationToken)
+        {
+            return RunPaymentAsync(request, paxService.ProcessCreditPaymentAsync, cancellationToken);
+        }
+
+        /// <summary>
+        /// Process a debit card payment transaction. Same request and response as credit, except that it
+        /// cannot ask for a card token or refund without the card.
+        /// </summary>
+        /// <param name="request">Payment request details including amount and reference number.</param>
+        /// <param name="cancellationToken">Cancellation token to abort the transaction.</param>
+        /// <returns>Payment transaction result.</returns>
+        [HttpPost("debit")]
+        public Task<ActionResult<PaxCreditResponse>> ProcessDebit(
+            [FromBody] PaxCreditRequest request,
+            CancellationToken cancellationToken)
+        {
+            if (request.RequestToken || request.CardPresent == false)
+            {
+                ActionResult<PaxCreditResponse> refused = BadRequest(CreditError("",
+                    "requestToken and cardPresent: false are not available on a debit transaction", request.EcrReferenceNumber));
+                return Task.FromResult(refused);
+            }
+
+            return RunPaymentAsync(request, paxService.ProcessDebitPaymentAsync, cancellationToken);
+        }
+
+        private async Task<ActionResult<PaxCreditResponse>> RunPaymentAsync(
+            PaxCreditRequest request,
+            Func<PaxCreditRequest, CancellationToken, Task<PaxCreditResponse>> process,
             CancellationToken cancellationToken)
         {
             try
@@ -45,7 +75,7 @@ namespace BakerScaleConnect.Controllers
                 }
 
                 // Process the payment with cancellation support
-                var response = await paxService.ProcessCreditPaymentAsync(request, cancellationToken);
+                var response = await process(request, cancellationToken);
 
                 if (response.Success)
                 {
@@ -293,7 +323,8 @@ namespace BakerScaleConnect.Controllers
             "card_not_present_return",
             "sale_token_request",
             "transaction_lookup",
-            "batch_close_details"
+            "batch_close_details",
+            "debit_route"
         ];
 
         /// <summary>

@@ -22,6 +22,9 @@ namespace BakerScaleConnect.Controllers.Models
 
         /// <summary>Timestamp of the transaction (UTC).</summary>
         public DateTime Timestamp { get; set; }
+        /// <summary>Set to "DEBIT" on a debit transaction. Credit transactions report it inside RawResponse.</summary>
+        public string? EdcType { get; set; }
+
         public string? CardBin { get; set; }
         public string? AuthorizationCode {get;set;}
         public string? BatchNumber {get;set;}
