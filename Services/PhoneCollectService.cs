@@ -13,12 +13,22 @@ namespace BakerScaleConnect.Services
 
         private readonly ILogger<PhoneCollectService> _logger;
         private readonly AppSettings _settings;
+        private readonly PaxService _paxService;
 
-        public PhoneCollectService(ILogger<PhoneCollectService> logger, AppSettings settings)
+        public PhoneCollectService(ILogger<PhoneCollectService> logger, AppSettings settings, PaxService paxService)
         {
             _logger = logger;
             _settings = settings;
+            _paxService = paxService;
         }
+
+        /// <summary>
+        /// Where the customer display trigger is sent. The Aries 8 is the payment
+        /// terminal, so the IP is always the one PaxService is using for payments;
+        /// only the listener port differs.
+        /// </summary>
+        public (string Ip, int Port) CustomerDisplayTarget =>
+            (_paxService.GetSettings().Settings.Ip, _settings.Aries.PhonePort);
 
         /// <summary>
         /// Send TCP trigger to Aries 8 to open the Odoo customer display in GeckoView.
@@ -26,16 +36,16 @@ namespace BakerScaleConnect.Services
         /// </summary>
         public async Task ShowCustomerDisplayAsync(string orderId, string displayUrl, string? logoUrl, string? logoVersion, CancellationToken ct)
         {
-            var aries = _settings.Aries;
+            var (ip, port) = CustomerDisplayTarget;
 
-            if (string.IsNullOrWhiteSpace(aries.TerminalIp))
-                throw new InvalidOperationException("Aries terminal IP not configured in settings.");
+            if (string.IsNullOrWhiteSpace(ip))
+                throw new InvalidOperationException("PAX terminal IP not configured in settings.");
 
-            if (aries.PhonePort is < 1 or > 65535)
-                throw new InvalidOperationException($"Aries PhonePort {aries.PhonePort} is not a valid TCP port (1-65535).");
+            if (port is < 1 or > 65535)
+                throw new InvalidOperationException($"Aries PhonePort {port} is not a valid TCP port (1-65535).");
 
-            await SendCustomerDisplayTriggerAsync(orderId, displayUrl, logoUrl, logoVersion, aries.TerminalIp, aries.PhonePort, ct);
-            _logger.LogInformation("Customer display trigger sent — order={OrderId}", orderId);
+            await SendCustomerDisplayTriggerAsync(orderId, displayUrl, logoUrl, logoVersion, ip, port, ct);
+            _logger.LogInformation("Customer display trigger sent — order={OrderId}, target={Ip}:{Port}", orderId, ip, port);
         }
 
         private async Task SendCustomerDisplayTriggerAsync(string orderId, string displayUrl, string? logoUrl, string? logoVersion, string ip, int port, CancellationToken ct)

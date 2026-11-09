@@ -11,7 +11,7 @@ namespace BakerScaleConnect.Controllers
     /// </summary>
     [ApiController]
     [Route("api/[controller]")]
-    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService, AppSettings appSettings, ILogger<PaxController> logger) : ControllerBase
+    public class PaxController(PaxService paxService, PhoneCollectService phoneCollectService, ILogger<PaxController> logger) : ControllerBase
     {
         /// <summary>
         /// Process a credit card payment transaction.
@@ -676,7 +676,8 @@ namespace BakerScaleConnect.Controllers
             }
             catch (System.Net.Sockets.SocketException ex)
             {
-                var target = $"{appSettings.Aries.TerminalIp}:{appSettings.Aries.PhonePort}";
+                var (ip, port) = phoneCollectService.CustomerDisplayTarget;
+                var target = $"{ip}:{port}";
                 logger.LogError(ex, "Could not reach Aries terminal at {Target} for order {OrderId}", target, request.OrderId);
                 return StatusCode(502, new
                 {

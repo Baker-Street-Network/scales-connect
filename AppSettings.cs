@@ -30,10 +30,9 @@ namespace BakerScaleConnect
 
         public class AriesConfig
         {
-            public string TerminalIp { get; set; } = "";
+            // No IP here: the customer display is on the payment terminal, so it
+            // always uses PaxTerminal.IpAddress (see PhoneCollectService).
             public int PhonePort { get; set; } = 9999;
-            public int CallbackPort { get; set; } = 5000;
-            public int TimeoutSeconds { get; set; } = 90;
         }
 
         public class CashDrawerConfig
